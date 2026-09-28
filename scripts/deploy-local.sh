@@ -77,6 +77,10 @@ kubectl apply -f ../k8s/litellm/configmap-local.yaml
 kubectl apply -f ../k8s/litellm/deployment.yaml
 # One replica is enough locally; each LiteLLM pod needs ~800Mi.
 kubectl -n llm-platform scale deployment/litellm-gateway --replicas=1
+# Replace the pod instead of surging a second one during rollouts: two
+# LiteLLM pods at once plus an Ollama cold start exhaust an 8 GB laptop.
+kubectl -n llm-platform patch deployment/litellm-gateway \
+  -p '{"spec":{"strategy":{"rollingUpdate":{"maxSurge":0,"maxUnavailable":1}}}}'
 
 echo "----------------------------------------------------------------------"
 echo "LiteLLM master key:"
