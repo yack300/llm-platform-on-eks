@@ -27,8 +27,8 @@ provider "aws" {
 
 # --------------------------------------------------------------------------
 # Minimal EKS cluster, reusing the official community module.
-# In prod you'd normally use your own wrapper (like at Bolt/CPM); here the
-# public module is used so the project is reproducible by anyone.
+# A production setup would typically wrap this in an internal module; here
+# the public module is used so the project is reproducible by anyone.
 # --------------------------------------------------------------------------
 module "eks" {
   #checkov:skip=CKV_TF_1:Terraform Registry module pinned by version constraint and .terraform.lock.hcl, not a git source
