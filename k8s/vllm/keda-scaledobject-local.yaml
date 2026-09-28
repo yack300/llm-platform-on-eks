@@ -1,0 +1,31 @@
+# ONLY for local development on kind/minikube (applied by
+# scripts/deploy-local.sh), NEVER on real EKS. Same triggers as
+# keda-scaledobject.yaml, pointed at the Ollama mock instead of vLLM, so
+# scale-to-zero and wake-from-zero can be tested without a GPU. The
+# vllm-queue trigger always reads 0 locally (no vLLM running) and is kept
+# only so both files stay comparable; keep them in sync.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: local-llm-mock-scaler
+  namespace: llm-platform
+spec:
+  scaleTargetRef:
+    name: local-llm-mock
+  minReplicaCount: 0
+  maxReplicaCount: 1  # CPU mock: more replicas only cost laptop memory
+  cooldownPeriod: 120
+  triggers:
+    - type: prometheus
+      name: gateway-demand
+      metadata:
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        query: sum(increase(litellm_deployment_total_requests_total{requested_model="local-mistral"}[5m])) or vector(0)
+        activationThreshold: "0"
+        threshold: "600"
+    - type: prometheus
+      name: vllm-queue
+      metadata:
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        query: sum(vllm:num_requests_waiting) or vector(0)
+        threshold: "5"

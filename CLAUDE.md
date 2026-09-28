@@ -102,6 +102,19 @@ what feeds `docs/cost-comparison.md`. OpenCost (infra-side cost) is not installe
 anywhere yet — it only appears as a documented next step in the comments at the end
 of `prometheus-grafana-values.yaml`.
 
+**Scale-to-zero spans three layers.** The ScaledObject has two triggers:
+`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model="local-mistral"}`
+from LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads
+`vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A
+vLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.
+Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,
+which doesn't count requests that failed because the backend was down. While vLLM
+cold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0
+also needs a GPU node, and there is no Cluster Autoscaler/Karpenter yet: with
+`gpu_nodes_desired = 0` the vLLM pod stays Pending. `keda-scaledobject-local.yaml`
+mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
+wakes on the next request).
+
 **CI has no build/deploy stage on purpose.** `.gitlab-ci.yml` only has `scan-iac`
 (Checkov, Trivy fs, GitLeaks) and `validate` (kubeconform and `kyverno apply` against `k8s/`, `terraform
 validate`/`fmt` against `terraform/` and `terraform/bootstrap/`) — it gates what's
@@ -121,7 +134,7 @@ cost-aware AI infra.
 - All comments/docs/README content must be written in **English**, even when
   discussing the repo in another language in chat.
 - `k8s/*-local*` files (`local-cpu-mock-deployment.yaml`, `configmap-local.yaml`,
-  `prometheus-grafana-values-local.yaml`) are strictly for `scripts/deploy-local.sh` /
+  `prometheus-grafana-values-local.yaml`, `keda-scaledobject-local.yaml`) are strictly for `scripts/deploy-local.sh` /
   kind-minikube and must never be applied against real EKS.
 - The local profile is sized for an 8 GB laptop (Docker Desktop at ~6 GB): LiteLLM is
   scaled to 1 replica, Alertmanager/node-exporter and Kyverno's reports/cleanup

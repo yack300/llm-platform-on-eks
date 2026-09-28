@@ -1,7 +1,23 @@
 # Requires KEDA installed in the cluster: https://keda.sh/docs/latest/deploy/
 #
-# Scales on request queue length instead of CPU, which is the right signal
-# for inference workloads (the real bottleneck is the GPU, not the pod's CPU).
+# Scales on request demand instead of CPU, which is the right signal for
+# inference workloads (the real bottleneck is the GPU, not the pod's CPU).
+#
+# Two triggers, because one metric can't cover both directions:
+#   - gateway-demand wakes vLLM from 0. It reads LiteLLM, which is always
+#     running; a vLLM metric can't do this, since at 0 replicas nothing
+#     publishes it.
+#   - vllm-queue drives scale-out from 1 to maxReplicaCount once vLLM is up.
+# KEDA scales to 0 when both are inactive for cooldownPeriod. While vLLM is
+# cold-starting, LiteLLM serves requests through its fallback (see
+# router_settings.fallbacks in k8s/litellm/configmap.yaml).
+#
+# Waking from 0 also needs a GPU node: with gpu_nodes_desired = 0, the pod
+# stays Pending unless a node autoscaler (Cluster Autoscaler/Karpenter) is
+# installed.
+#
+# k8s/vllm/keda-scaledobject-local.yaml mirrors these triggers against the
+# local Ollama mock; keep both in sync.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -14,13 +30,25 @@ spec:
   maxReplicaCount: 3
   cooldownPeriod: 120
   triggers:
+    # Prometheus installed via kube-prometheus-stack with release name
+    # "prometheus" (see k8s/observability/prometheus-grafana-values.yaml).
     - type: prometheus
+      name: gateway-demand
       metadata:
-        # Prometheus installed via kube-prometheus-stack with release name
-        # "prometheus" (see k8s/observability/prometheus-grafana-values.yaml).
-        # Native vLLM metric, scraped by the vllm-inference ServiceMonitor
-        # in k8s/observability/servicemonitors.yaml.
         serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
-        metricName: vllm_pending_requests
-        query: sum(vllm_num_requests_waiting)
+        # Every attempt LiteLLM routes to local-mistral in the last 5 minutes,
+        # including the ones that fail because vLLM is at 0 (the proxy-level
+        # litellm_proxy_total_requests_metric doesn't count those).
+        query: sum(increase(litellm_deployment_total_requests_total{requested_model="local-mistral"}[5m])) or vector(0)
+        activationThreshold: "0"  # any request activates (wakes from 0)
+        # Scale-out is left to vllm-queue: ~2 req/s per replica is higher than
+        # this trigger should ever need to push on its own.
+        threshold: "600"
+    - type: prometheus
+      name: vllm-queue
+      metadata:
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        # Native vLLM metric (colon-separated name), scraped by the
+        # vllm-inference ServiceMonitor in k8s/observability/servicemonitors.yaml.
+        query: sum(vllm:num_requests_waiting) or vector(0)
         threshold: "5"

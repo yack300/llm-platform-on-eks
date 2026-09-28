@@ -56,6 +56,9 @@ kubectl apply -f ../k8s/observability/grafana-dashboard-llm-cost.yaml
 # k8s/vllm/local-cpu-mock-deployment.yaml and k8s/litellm/configmap-local.yaml.
 echo "==> Applying local inference mock (Ollama, no GPU)..."
 kubectl apply -f ../k8s/vllm/local-cpu-mock-deployment.yaml
+# Same KEDA triggers as production, pointed at the mock: scales it to 0 when
+# idle and wakes it on the next request routed to local-mistral.
+kubectl apply -f ../k8s/vllm/keda-scaledobject-local.yaml
 
 echo "==> Creating LiteLLM secret (if it doesn't exist)..."
 # k8s/litellm/deployment.yaml loads litellm-secrets via envFrom, and the config
