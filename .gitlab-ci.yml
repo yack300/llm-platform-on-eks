@@ -39,7 +39,9 @@ validate-k8s-manifests:
   script:
     # -ignore-missing-schemas: CRDs without a public schema (Prometheus
     # Operator's ServiceMonitor, KEDA's ScaledObject, Kyverno's ClusterPolicy)
-    - kubeconform -summary -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/
+    # -ignore-filename-pattern: Helm values files (*values.yaml,
+    # *values-local.yaml) live under k8s/ but aren't Kubernetes manifests.
+    - kubeconform -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.30.0 k8s/
 
 validate-kyverno-policies:
   stage: validate

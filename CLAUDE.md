@@ -37,7 +37,7 @@ cd terraform && terraform init -backend-config=backend.hcl && terraform apply
 checkov -d terraform/ --compact --quiet
 trivy fs --severity CRITICAL,HIGH --exit-code 1 .
 gitleaks detect --source . --verbose --redact
-kubeconform -summary -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/
+kubeconform -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.30.0 k8s/
 kyverno apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
 terraform -chdir=terraform fmt -check -recursive
 terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate
