@@ -1,0 +1,78 @@
+# NOTE: this manifest assumes GPU mode. For local testing on kind/minikube
+# without GPU, use the CPU variant (see deploy-local.sh), which runs slower
+# but is enough to validate the gateway and RAG logic.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-inference
+  namespace: llm-platform
+  labels:
+    app: vllm-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-inference
+  template:
+    metadata:
+      labels:
+        app: vllm-inference
+    spec:
+      # Tolerates the GPU node group taint defined in Terraform
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Equal"
+          value: "present"
+          effect: "NoSchedule"
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0 # pinned: check hub.docker.com/r/vllm/vllm-openai/tags for newer releases
+          args:
+            # AWQ-quantized Mistral-7B-Instruct (~4GB): fits comfortably in
+            # the 16GB T4 of a g4dn.xlarge along with the KV cache. AWQ has
+            # better kernel support in vLLM for T4 (compute capability 7.5)
+            # than GPTQ. max-model-len is capped to leave more VRAM for the
+            # KV cache under concurrent load.
+            - "--model"
+            - "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+            # Short, stable name so LiteLLM doesn't depend on the HF path
+            - "--served-model-name"
+            - "local-mistral"
+            - "--quantization"
+            - "awq"
+            - "--max-model-len"
+            - "4096"
+            - "--gpu-memory-utilization"
+            - "0.85"
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+            requests:
+              nvidia.com/gpu: 1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 90
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-inference
+  namespace: llm-platform
+spec:
+  selector:
+    app: vllm-inference
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: "8000"

@@ -1,0 +1,26 @@
+# Requires KEDA installed in the cluster: https://keda.sh/docs/latest/deploy/
+#
+# Scales on request queue length instead of CPU, which is the right signal
+# for inference workloads (the real bottleneck is the GPU, not the pod's CPU).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-inference-scaler
+  namespace: llm-platform
+spec:
+  scaleTargetRef:
+    name: vllm-inference
+  minReplicaCount: 0  # allows scaling to 0 when there's no traffic (real cost savings)
+  maxReplicaCount: 3
+  cooldownPeriod: 120
+  triggers:
+    - type: prometheus
+      metadata:
+        # Prometheus installed via kube-prometheus-stack with release name
+        # "prometheus" (see k8s/observability/prometheus-grafana-values.yaml).
+        # Native vLLM metric, scraped by the vllm-inference ServiceMonitor
+        # in k8s/observability/servicemonitors.yaml.
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_pending_requests
+        query: sum(vllm_num_requests_waiting)
+        threshold: "5"

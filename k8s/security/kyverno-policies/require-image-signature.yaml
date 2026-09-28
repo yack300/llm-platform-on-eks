@@ -1,0 +1,43 @@
+# Requires Kyverno installed with the image verification feature (default
+# since Kyverno 1.8+): https://kyverno.io/docs/writing-policies/verify-images/
+#
+# Supply-chain policy for CKS practice: verifies Cosign/Sigstore signatures.
+# Scoped ONLY to images published under your own registry namespace
+# (REPLACE-WITH-YOUR-REGISTRY/*) — NOT to the third-party OSS images this
+# repo currently deploys (vllm/vllm-openai, ghcr.io/berriai/litellm,
+# qdrant/qdrant, ollama/ollama), which aren't signed by you and would
+# always fail verification. If a custom app image is ever added to this
+# repo (e.g. the RAG ingestion service, see k8s/qdrant/helm-values.yaml),
+# sign it in CI with `cosign sign --key cosign.key $IMAGE` and it'll be
+# covered by this rule automatically.
+#
+# Setup:
+#   cosign generate-key-pair
+#   kubectl create secret generic cosign-public-key -n kyverno \
+#     --from-file=cosign.pub=cosign.pub
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-signature
+spec:
+  validationFailureAction: Audit # switch to Enforce once a real signed image + key exist
+  background: false
+  rules:
+    - name: verify-own-images-signed
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      verifyImages:
+        - imageReferences:
+            - "REPLACE-WITH-YOUR-REGISTRY/*"
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      REPLACE-WITH-COSIGN-PUBLIC-KEY
+                      -----END PUBLIC KEY-----

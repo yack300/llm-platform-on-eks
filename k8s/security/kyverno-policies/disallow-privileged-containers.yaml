@@ -1,0 +1,50 @@
+# Requires Kyverno installed: https://kyverno.io/docs/installation/
+#
+# Blocks privileged containers and privilege escalation in the llm-platform
+# namespace. Privileged mode gives a container root-equivalent access to the
+# host (devices, kernel capabilities) — never needed by vllm/litellm/qdrant,
+# which only need normal container isolation.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      validate:
+        message: "Privileged containers are not allowed in llm-platform."
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+    - name: privilege-escalation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      validate:
+        message: "allowPrivilegeEscalation must be false in llm-platform."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: "false"

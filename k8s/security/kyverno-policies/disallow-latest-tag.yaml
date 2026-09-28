@@ -1,0 +1,46 @@
+# Requires Kyverno installed: https://kyverno.io/docs/installation/
+#
+# k8s/vllm/deployment.yaml and k8s/litellm/deployment.yaml are pinned to
+# explicit version tags (not :latest), so they already comply. Digest
+# pinning (e.g. vllm/vllm-openai@sha256:...) is a stronger follow-up and
+# also a prerequisite for require-image-signature.yaml below.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      validate:
+        message: "An image tag is required (no implicit :latest)."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ images.containers.{{element.name}}.tag }}"
+                    operator: Equals
+                    value: "latest"
+    - name: validate-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      validate:
+        message: "Using ':latest' is not allowed, pin an explicit version tag or digest."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

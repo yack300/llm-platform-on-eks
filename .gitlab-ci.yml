@@ -1,0 +1,52 @@
+stages:
+  - scan-iac
+  - validate
+
+# --- DevSecOps: shift-left, before building anything ---
+checkov-terraform:
+  stage: scan-iac
+  image: bridgecrew/checkov:latest
+  script:
+    - checkov -d terraform/ --compact --quiet
+  allow_failure: false
+
+trivy-fs-scan:
+  stage: scan-iac
+  image: aquasec/trivy:latest
+  script:
+    # Scans the whole repo: dependencies, secrets, IaC (K8s manifests and Terraform)
+    - trivy fs --severity CRITICAL,HIGH --exit-code 1 .
+
+gitleaks-scan:
+  stage: scan-iac
+  image: zricethezav/gitleaks:latest
+  script:
+    # Detects committed secrets (API keys, LiteLLM master keys, etc.)
+    # before merging to main. Complements trivy fs (which also detects
+    # secrets but with less focus on commit history).
+    - gitleaks detect --source . --verbose --redact
+  allow_failure: false
+
+# --- Validation: there's no custom image to build here (this repo deploys
+# third-party OSS images — vllm/vllm-openai, litellm — not application code),
+# so there's no build/push/deploy stage. FluxCD watches the repo directly and
+# reconciles whatever lands on main; CI only gates what's allowed to reach
+# main. Same GitOps pattern you use at Bolt/CPM: never manual kubectl/deploy,
+# everything goes through Git. ---
+validate-k8s-manifests:
+  stage: validate
+  image: ghcr.io/yannh/kubeconform:latest-alpine
+  script:
+    # -ignore-missing-schemas: CRDs without a public schema (Prometheus
+    # Operator's ServiceMonitor, KEDA's ScaledObject, Kyverno's ClusterPolicy)
+    - kubeconform -summary -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/
+
+validate-terraform:
+  stage: validate
+  image: hashicorp/terraform:1.7
+  script:
+    - terraform -chdir=terraform fmt -check -recursive
+    - terraform -chdir=terraform init -backend=false
+    - terraform -chdir=terraform validate
+    - terraform -chdir=terraform/bootstrap init
+    - terraform -chdir=terraform/bootstrap validate

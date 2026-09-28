@@ -1,0 +1,10 @@
+# Copy this file to backend.hcl (gitignored) and replace the values with
+# the "backend_hcl" output from `terraform apply` in terraform/bootstrap/.
+#
+# Usage: terraform init -backend-config=backend.hcl
+
+bucket         = "YOUR-ACCOUNT-llm-platform-tfstate"
+key            = "llm-platform-on-eks/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "llm-platform-tfstate-lock"
+encrypt        = true

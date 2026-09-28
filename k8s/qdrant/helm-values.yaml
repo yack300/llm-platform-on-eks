@@ -1,0 +1,31 @@
+# Deployed via the official Helm chart:
+#   helm repo add qdrant https://qdrant.github.io/qdrant-helm
+#   helm install qdrant qdrant/qdrant -n llm-platform -f helm-values.yaml
+#
+# Alternative: Weaviate (helm.weaviate.io) if you prefer its schema/class
+# model over plain collections.
+
+replicaCount: 1
+
+persistence:
+  enabled: true
+  size: 4Gi   # enough for a small test corpus
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+service:
+  type: ClusterIP
+  port: 6333
+
+# TODO: once deployed, the ingestion pipeline (outside this K8s repo, lives
+# in a separate script/notebook) does:
+#   1. Document chunking
+#   2. Embeddings (e.g. sentence-transformers, or via LiteLLM if the model supports it)
+#   3. Upsert into the Qdrant collection
+#   4. The RAG endpoint in LiteLLM/app does retrieval + prompts the model

@@ -1,0 +1,55 @@
+# NVIDIA device plugin: exposes nvidia.com/gpu as a schedulable resource on
+# the nodes of the GPU node group (created in
+# terraform/modules/eks-gpu-nodegroup/). Reconciled by FluxCD, not by
+# Terraform (Terraform = AWS infra, Flux = cluster workloads).
+#
+# Source: https://github.com/NVIDIA/k8s-device-plugin
+# If more complete management is needed in the future (drivers, container
+# toolkit, DCGM exporter), migrate to the NVIDIA GPU Operator (also via Flux).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      # Only scheduled on the GPU node group's nodes (same taint defined
+      # in terraform/modules/eks-gpu-nodegroup/main.tf)
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Equal"
+          value: "present"
+          effect: "NoSchedule"
+        - key: CriticalAddonsOnly
+          operator: Exists
+      priorityClassName: "system-node-critical"
+      containers:
+        - name: nvidia-device-plugin-ctr
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.16.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins

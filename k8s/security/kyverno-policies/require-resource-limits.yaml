@@ -1,0 +1,36 @@
+# Requires Kyverno installed: https://kyverno.io/docs/installation/
+#
+# Example policy to bootstrap the security layer. Ideas for the next
+# policies (also part of the CKS "practice project"):
+#   - disallow-privileged-containers.yaml
+#   - require-image-signature.yaml (with Cosign/Sigstore)
+#   - disallow-latest-tag.yaml
+#   - restrict-host-network.yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-resource-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      validate:
+        message: "All containers in llm-platform must define CPU/memory requests and limits."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

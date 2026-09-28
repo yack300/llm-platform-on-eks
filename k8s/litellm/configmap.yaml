@@ -1,0 +1,42 @@
+# LiteLLM gateway config: exposes a single OpenAI-style API to your local
+# vLLM and (optionally) to external providers.
+#
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: llm-platform
+data:
+  config.yaml: |
+    model_list:
+      - model_name: local-mistral
+        litellm_params:
+          # "local-mistral" matches --served-model-name in
+          # k8s/vllm/deployment.yaml
+          model: openai/local-mistral
+          api_base: http://vllm-inference.llm-platform.svc.cluster.local:8000/v1
+          api_key: "no-real-key-needed-locally"
+
+      # Example external provider for cost/latency comparison (optional):
+      # - model_name: claude-fallback
+      #   litellm_params:
+      #     model: anthropic/claude-sonnet-5
+      #     api_key: os.environ/ANTHROPIC_API_KEY
+
+    router_settings:
+      # Automatic fallback if the local model doesn't respond
+      fallbacks: [{"local-mistral": ["claude-fallback"]}]
+      num_retries: 2
+
+    litellm_settings:
+      # This is what feeds the cost observability layer (Phase 4): exposes
+      # native Prometheus metrics on /metrics:4000 (cost per token/request,
+      # latency, success/failure per model). Scraped by the ServiceMonitor
+      # in k8s/observability/servicemonitors.yaml.
+      success_callback: ["prometheus"]
+      failure_callback: ["prometheus"]
+      set_verbose: true
+
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY

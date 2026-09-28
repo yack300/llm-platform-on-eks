@@ -1,0 +1,15 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+terraform/backend.hcl
+
+# OS
+.DS_Store
+
+# Claude Code local settings (machine-specific, not project config)
+.claude/settings.local.json

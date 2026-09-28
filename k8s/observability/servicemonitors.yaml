@@ -1,0 +1,49 @@
+# Requires the Prometheus Operator's ServiceMonitor CRD (installed by
+# kube-prometheus-stack, see prometheus-grafana-values.yaml). That chart's
+# Prometheus only scrapes targets with these ServiceMonitors thanks to
+# serviceMonitorSelectorNilUsesHelmValues: false.
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm-inference
+  namespace: llm-platform
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: vllm-inference
+  namespaceSelector:
+    matchNames:
+      - llm-platform
+  endpoints:
+    # vLLM exposes native Prometheus metrics on /metrics (num requests
+    # waiting/running, latency, token throughput) with no extra config.
+    - port: "8000"
+      targetPort: 8000
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: litellm-gateway
+  namespace: llm-platform
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: litellm-gateway
+  namespaceSelector:
+    matchNames:
+      - llm-platform
+  endpoints:
+    # Requires litellm_settings.callbacks: ["prometheus"] in
+    # k8s/litellm/configmap.yaml, which exposes /metrics on the same port
+    # 4000 (cost per request/token, latency, success/failure per model).
+    - port: "4000"
+      targetPort: 4000
+      path: /metrics
+      interval: 15s

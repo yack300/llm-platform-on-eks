@@ -1,0 +1,61 @@
+# ONLY for local development on kind/minikube (applied by
+# scripts/deploy-local.sh), NEVER on real EKS. Replaces vllm/deployment.yaml
+# (which requires GPU) with Ollama running a tiny CPU model
+# (qwen2.5:0.5b, ~400MB), which does expose an OpenAI-compatible endpoint
+# (/v1/chat/completions) from Ollama >= 0.1.26 — this lets you validate the
+# full pipeline (gateway, RAG, fallback, queue-based KEDA) with real
+# inference (even if low-quality), not a static response.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-llm-mock
+  namespace: llm-platform
+  labels:
+    app: local-llm-mock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: local-llm-mock
+  template:
+    metadata:
+      labels:
+        app: local-llm-mock
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              ollama serve &
+              until ollama list >/dev/null 2>&1; do sleep 1; done
+              ollama pull qwen2.5:0.5b
+              wait
+          ports:
+            - containerPort: 11434
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 11434
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-llm-mock
+  namespace: llm-platform
+spec:
+  selector:
+    app: local-llm-mock
+  ports:
+    - port: 11434
+      targetPort: 11434

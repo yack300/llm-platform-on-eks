@@ -1,0 +1,30 @@
+# Variant for LOCAL DEVELOPMENT ONLY (applied by scripts/deploy-local.sh
+# instead of configmap.yaml): points model_name "local-mistral" to the
+# Ollama mock in k8s/vllm/local-cpu-mock-deployment.yaml instead of the real
+# vLLM Service, so the gateway can be validated without GPU. The app/client
+# querying LiteLLM keeps asking for "local-mistral" in both cases: the
+# backend swap is transparent.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: llm-platform
+data:
+  config.yaml: |
+    model_list:
+      - model_name: local-mistral
+        litellm_params:
+          model: openai/qwen2.5:0.5b
+          api_base: http://local-llm-mock.llm-platform.svc.cluster.local:11434/v1
+          api_key: "no-real-key-needed-locally"
+
+    router_settings:
+      num_retries: 2
+
+    litellm_settings:
+      success_callback: ["prometheus"]
+      failure_callback: ["prometheus"]
+      set_verbose: true
+
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY

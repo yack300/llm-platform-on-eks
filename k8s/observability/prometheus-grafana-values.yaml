@@ -1,0 +1,63 @@
+# Helm values for kube-prometheus-stack (Prometheus Operator + Grafana +
+# Alertmanager in a single chart). Replaces the previous Datadog install:
+# Datadog's free tier only gives 1-day retention and 5 hosts, insufficient
+# for this project. Prometheus is also a hard requirement for the KEDA
+# trigger (k8s/vllm/keda-scaledobject.yaml), so a single install covers
+# both autoscaling and cost observability.
+#
+# Install (see scripts/deploy-local.sh for the full command):
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace -f prometheus-grafana-values.yaml
+#
+# With release name "prometheus" the service ends up at:
+#   prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+# which is the serverAddress used by the KEDA ScaledObject.
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    # Allows discovering ServiceMonitors outside the release namespace
+    # (litellm-gateway and vllm-inference live in the llm-platform namespace)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+grafana:
+  enabled: true
+  adminPassword: "" # TODO: inject via external secret (SealedSecret/External Secrets), never in plaintext
+  persistence:
+    enabled: true
+    size: 2Gi
+  # Cost/latency dashboard: tokens consumed, estimated cost per
+  # request/model (local vs. external provider), p50/p95, all derived from
+  # the metrics exposed by LiteLLM (the "prometheus" callback) and vLLM
+  # (native metrics at /metrics).
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# TODO after deploying:
+# 1. Import/build a dashboard with cost per request/token, p50/p95 latency,
+#    breakdown by model (local-mistral vs. external fallback).
+# 2. Install OpenCost or Kubecost for the underlying infra cost:
+#    helm repo add opencost https://opencost.github.io/opencost-helm-chart
+#    helm install opencost opencost/opencost -n opencost --create-namespace
+#    (OpenCost also exposes metrics via /metrics, scrapeable by this same Prometheus)
+# 3. Cross both sources (LLM cost via LiteLLM + infra cost via OpenCost)
+#    in docs/cost-comparison.md

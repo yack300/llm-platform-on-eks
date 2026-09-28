@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm-gateway
+  namespace: llm-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: litellm-gateway
+  template:
+    metadata:
+      labels:
+        app: litellm-gateway
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:v1.99.1 # pinned: check github.com/BerriAI/litellm/releases for newer versions
+          args: ["--config", "/config/config.yaml"]
+          ports:
+            - containerPort: 4000
+              name: http
+          envFrom:
+            - secretRef:
+                name: litellm-secrets  # LITELLM_MASTER_KEY, ANTHROPIC_API_KEY, etc.
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm-gateway
+  namespace: llm-platform
+spec:
+  selector:
+    app: litellm-gateway
+  ports:
+    - port: 4000
+      targetPort: 4000
+      name: "4000"

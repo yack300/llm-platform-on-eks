@@ -1,0 +1,28 @@
+# Requires Kyverno installed: https://kyverno.io/docs/installation/
+#
+# Blocks hostNetwork/hostPID/hostIPC in llm-platform: none of vllm, litellm,
+# or qdrant need to share the host's network/process/IPC namespace, and
+# allowing it would let a compromised pod see host-level traffic/processes.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-host-network
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+      validate:
+        message: "hostNetwork, hostPID, and hostIPC are not allowed in llm-platform."
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+            =(hostPID): "false"
+            =(hostIPC): "false"
