@@ -29,13 +29,40 @@ spec:
           securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml
             allowPrivilegeEscalation: false
             privileged: false
+          # Measured ~800Mi peak at idle/light load (v1.99.1); the previous
+          # 512Mi limit got the container OOMKilled during startup. Startup is
+          # single-threaded and CPU-bound (Python imports), so a 500m CPU limit
+          # stretched it past 3 minutes.
           resources:
             requests:
               cpu: 250m
-              memory: 256Mi
+              memory: 768Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: "1"
+              memory: 1536Mi
+          # Without probes the pod reports Ready long before port 4000 is
+          # listening. The server is busy right after it binds the port, hence
+          # the longer timeouts.
+          startupProbe:
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60 # up to 5 minutes
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 4000
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
       volumes:
         - name: config
           configMap:
