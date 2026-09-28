@@ -18,11 +18,16 @@ data:
           api_base: http://vllm-inference.llm-platform.svc.cluster.local:8000/v1
           api_key: "no-real-key-needed-locally"
 
-      # Example external provider for cost/latency comparison (optional):
-      # - model_name: claude-fallback
-      #   litellm_params:
-      #     model: anthropic/claude-sonnet-5
-      #     api_key: os.environ/ANTHROPIC_API_KEY
+      # External provider used as fallback while vLLM is scaled to 0 or
+      # cold-starting (see k8s/vllm/keda-scaledobject.yaml), and as the
+      # reference for the cost comparison. Optional: without ANTHROPIC_API_KEY
+      # in the litellm-secrets Secret, LiteLLM still starts and serves
+      # local-mistral, but requests fail instead of falling back while vLLM
+      # is down. Clients keep asking for "local-mistral" either way.
+      - model_name: claude-fallback
+        litellm_params:
+          model: anthropic/claude-sonnet-5
+          api_key: os.environ/ANTHROPIC_API_KEY
 
     router_settings:
       # Automatic fallback if the local model doesn't respond

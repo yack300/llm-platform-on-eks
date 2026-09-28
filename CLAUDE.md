@@ -82,7 +82,9 @@ Both configmaps use the same `litellm-config` ConfigMap name and the same
 `model_name: local-mistral`, so the client-facing API is identical regardless of
 which backend is deployed — `scripts/deploy-local.sh` applies the local pair,
 production applies the GPU pair. Don't let these two drift apart on
-`litellm_settings`/`router_settings` without a reason.
+`litellm_settings`/`router_settings` without a reason. The one intentional
+difference: only the production config defines the `claude-fallback` model and
+`fallbacks`, since there's no Anthropic key locally.
 
 **Terraform remote state has its own bootstrap module.** `terraform/bootstrap/`
 creates the S3 bucket + DynamoDB lock table for `terraform/`'s own state, and is
