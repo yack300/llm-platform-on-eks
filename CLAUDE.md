@@ -33,15 +33,15 @@ cd terraform/bootstrap && terraform init && terraform apply
 # Main infra (EKS cluster + GPU node group) — real AWS, real cost
 cd terraform && terraform init -backend-config=backend.hcl && terraform apply
 
-# What CI runs (.gitlab-ci.yml), useful to replicate locally before pushing:
-checkov -d terraform/ --compact --quiet
-trivy fs --severity CRITICAL,HIGH --exit-code 1 .
-gitleaks detect --source . --verbose --redact
-kubeconform -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.30.0 k8s/
-kyverno apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
-terraform -chdir=terraform fmt -check -recursive
-terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate
-terraform -chdir=terraform/bootstrap init && terraform -chdir=terraform/bootstrap validate
+# What CI runs (.github/workflows/ci.yml), with the same pinned images, useful to
+# replicate locally before pushing (image versions live in the workflow's env:)
+docker run --rm -v "$PWD":/repo -w /repo bridgecrew/checkov:3.3.20 -d terraform/ --compact --quiet
+docker run --rm -v "$PWD":/repo -w /repo aquasec/trivy:0.74.0 fs --severity CRITICAL,HIGH --exit-code 1 .
+docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.30.0 k8s/
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
+# terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
+# and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
 # Validate a single manifest instead of the whole tree
 kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/vllm/deployment.yaml
@@ -50,6 +50,13 @@ kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/vllm/
 `-ignore-missing-schemas` is required because the CRDs used here (ServiceMonitor,
 ScaledObject, Kyverno ClusterPolicy) have no public schema, so kubeconform silently
 skips them — a typo in those files will not be caught by CI.
+
+Checkov exceptions are deliberate and documented inline as `#checkov:skip=ID:reason`
+(mostly controls that add recurring AWS cost, like KMS keys or cross-region
+replication, on the tiny state bucket). Add new skips the same way, with a reason,
+rather than loosening the CI command. Trivy runs its default `fs` scanners
+(vulnerabilities and secrets) only; enabling `--scanners misconfig` currently
+reports ~10 K8s hardening findings (e.g. readOnlyRootFilesystem) that aren't fixed.
 
 `kyverno apply` runs the same `Enforce` admission policies the cluster uses against
 the raw manifests. Any new Deployment in `llm-platform` must pin its image tag and set
@@ -117,10 +124,10 @@ also needs a GPU node, and there is no Cluster Autoscaler/Karpenter yet: with
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
 
-**CI has no build/deploy stage on purpose.** `.gitlab-ci.yml` only has `scan-iac`
-(Checkov, Trivy fs, GitLeaks) and `validate` (kubeconform and `kyverno apply` against `k8s/`, `terraform
-validate`/`fmt` against `terraform/` and `terraform/bootstrap/`) — it gates what's
-allowed to reach `main`, then FluxCD reconciles directly from `main`. If real
+**CI has no build/deploy stage on purpose.** `.github/workflows/ci.yml` runs scans
+(Checkov, Trivy fs, GitLeaks) and, once they pass, validation (kubeconform and
+`kyverno apply` against `k8s/`, `terraform validate`/`fmt` against `terraform/` and
+`terraform/bootstrap/`) — it gates what's allowed to reach `main`, then FluxCD reconciles directly from `main`. If real
 application code is ever added to this repo (e.g. the RAG ingestion pipeline, which
 today explicitly lives outside this repo per the comment in
 `k8s/qdrant/helm-values.yaml`), build/push stages would need to come back.

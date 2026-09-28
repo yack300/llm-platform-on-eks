@@ -1,0 +1,100 @@
+# There's no custom image to build here (this repo deploys third-party OSS
+# images: vllm/vllm-openai, litellm, qdrant, ollama), so there's no
+# build/push/deploy job. FluxCD watches the repo and reconciles whatever lands
+# on main; CI only gates what's allowed to reach main (GitOps: no manual
+# kubectl/deploy, everything goes through Git).
+#
+# Every tool runs from a version-pinned container image, so the same commands
+# work locally with `docker run` (see CLAUDE.md). Bump versions deliberately.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CHECKOV_IMAGE: bridgecrew/checkov:3.3.20
+  TRIVY_IMAGE: aquasec/trivy:0.74.0
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1
+  KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.8.0
+  # Keep in sync with the Kyverno version running in the cluster.
+  KYVERNO_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.1
+  TERRAFORM_IMAGE: hashicorp/terraform:1.16.4
+
+jobs:
+  # --- DevSecOps: shift-left scans ---
+  checkov:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Deliberate skips are documented inline as #checkov:skip comments.
+      - run: docker run --rm -v "$PWD":/repo -w /repo "$CHECKOV_IMAGE" -d terraform/ --compact --quiet
+
+  trivy-fs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Default fs scanners: dependency vulnerabilities and secrets. IaC
+      # misconfigurations are covered by Checkov (Terraform) and Kyverno (K8s).
+      - run: docker run --rm -v "$PWD":/repo -w /repo "$TRIVY_IMAGE" fs --severity CRITICAL,HIGH --exit-code 1 .
+
+  gitleaks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # scan the full history, not just the last commit
+      # Detects committed secrets (API keys, LiteLLM master keys, etc.).
+      - run: docker run --rm -v "$PWD":/repo "$GITLEAKS_IMAGE" git /repo --redact --verbose
+
+  # --- Validation (runs only if the scans pass) ---
+  kubeconform:
+    needs: [checkov, trivy-fs, gitleaks]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # -ignore-missing-schemas: CRDs without a public schema (ServiceMonitor,
+      # ScaledObject, ClusterPolicy). -ignore-filename-pattern: Helm values
+      # files live under k8s/ but aren't Kubernetes manifests.
+      - run: >-
+          docker run --rm -v "$PWD":/repo -w /repo "$KUBECONFORM_IMAGE"
+          -summary -strict -ignore-missing-schemas
+          -ignore-filename-pattern 'values(-local)?\.yaml$'
+          -kubernetes-version 1.30.0 k8s/
+
+  kyverno:
+    needs: [checkov, trivy-fs, gitleaks]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Runs the same admission policies the cluster enforces against the raw
+      # manifests, so a violation fails here instead of at Flux reconcile time.
+      # Helm-managed components (Qdrant, kube-prometheus-stack) aren't covered:
+      # only their values files live here.
+      - run: >-
+          docker run --rm -v "$PWD":/repo -w /repo "$KYVERNO_IMAGE"
+          apply k8s/security/kyverno-policies/
+          --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
+
+  terraform:
+    needs: [checkov, trivy-fs, gitleaks]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: fmt and validate (main module and bootstrap)
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo --entrypoint sh "$TERRAFORM_IMAGE" -ec '
+            terraform -chdir=terraform fmt -check -recursive
+            terraform -chdir=terraform init -backend=false -input=false
+            terraform -chdir=terraform validate
+            terraform -chdir=terraform/bootstrap init -input=false
+            terraform -chdir=terraform/bootstrap validate
+          '

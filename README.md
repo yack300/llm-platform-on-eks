@@ -31,7 +31,7 @@ llm-platform-on-eks/
 │   ├── gpu/                     # NVIDIA device plugin DaemonSet (reconciled by Flux)
 │   ├── security/                # Kyverno policies + Trivy-operator config
 │   └── observability/         # kube-prometheus-stack values + ServiceMonitors (cost/latency)
-├── .gitlab-ci.yml             # Pipeline: GitLeaks + Checkov + Trivy fs -> validates K8s/TF manifests
+├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform
 │                               # (no build/push: no custom image, Flux reconciles main directly)
 ├── docs/
 │   └── cost-comparison.md      # Cost-per-1,000-requests table (local vs. external provider)
