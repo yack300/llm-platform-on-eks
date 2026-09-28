@@ -1,0 +1,30 @@
+# ONLY for local development on kind/minikube (applied by
+# scripts/deploy-local.sh), NEVER on real EKS. Layered on top of
+# prometheus-grafana-values.yaml (helm -f base -f local) to fit the whole
+# stack on a laptop: on an 8 GB machine the full install starved the kind
+# node of memory, and the control plane started restarting.
+#
+# Keeps what the local test actually needs (Prometheus for the KEDA trigger
+# and the LiteLLM/vLLM ServiceMonitors, Grafana to look at the metrics) and
+# drops the rest.
+
+alertmanager:
+  enabled: false # no alert routing is configured locally
+
+nodeExporter:
+  enabled: false # host metrics of a single kind container aren't meaningful
+
+prometheus:
+  prometheusSpec:
+    retention: 1d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+
+grafana:
+  persistence:
+    enabled: false # dashboards are provisioned by the sidecar, nothing to keep

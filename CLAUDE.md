@@ -120,8 +120,13 @@ cost-aware AI infra.
 
 - All comments/docs/README content must be written in **English**, even when
   discussing the repo in another language in chat.
-- `k8s/*-local*` files (`local-cpu-mock-deployment.yaml`, `configmap-local.yaml`) are
-  strictly for `scripts/deploy-local.sh` / kind-minikube and must never be applied
-  against real EKS.
+- `k8s/*-local*` files (`local-cpu-mock-deployment.yaml`, `configmap-local.yaml`,
+  `prometheus-grafana-values-local.yaml`) are strictly for `scripts/deploy-local.sh` /
+  kind-minikube and must never be applied against real EKS.
+- The local profile is sized for an 8 GB laptop (Docker Desktop at ~6 GB): LiteLLM is
+  scaled to 1 replica, Alertmanager/node-exporter and Kyverno's reports/cleanup
+  controllers are disabled. The full stack at production settings exhausts that
+  memory and takes down the kind control plane, so keep local overrides in the
+  script or `*-local*` files rather than trimming the production manifests.
 - `vpc_id` and `subnet_ids` (`terraform/variables.tf`) have no defaults — they're
   required inputs for any real `terraform apply`, since the module doesn't create a VPC.

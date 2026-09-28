@@ -25,14 +25,18 @@ helm upgrade --install keda kedacore/keda --namespace keda --create-namespace
 
 echo "==> Installing Kyverno..."
 helm repo add kyverno https://kyverno.github.io/kyverno --force-update
-helm upgrade --install kyverno kyverno/kyverno --namespace kyverno --create-namespace
+# Reports and cleanup controllers are off locally to save memory: admission
+# (what actually enforces the policies) and background controllers remain.
+helm upgrade --install kyverno kyverno/kyverno --namespace kyverno --create-namespace \
+  --set reportsController.enabled=false --set cleanupController.enabled=false
 
 echo "==> Installing kube-prometheus-stack (Prometheus + Grafana)..."
 # Required both by the KEDA trigger (request queue) and by the cost
 # observability layer (Phase 4). See k8s/observability/.
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
 helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace -f ../k8s/observability/prometheus-grafana-values.yaml
+  -n monitoring --create-namespace -f ../k8s/observability/prometheus-grafana-values.yaml \
+  -f ../k8s/observability/prometheus-grafana-values-local.yaml
 
 echo "==> Installing Qdrant..."
 helm repo add qdrant https://qdrant.github.io/qdrant-helm --force-update
@@ -67,6 +71,8 @@ echo "==> Applying LiteLLM (local config)..."
 # ConfigMap first so pods don't start before their config exists.
 kubectl apply -f ../k8s/litellm/configmap-local.yaml
 kubectl apply -f ../k8s/litellm/deployment.yaml
+# One replica is enough locally; each LiteLLM pod needs ~800Mi.
+kubectl -n llm-platform scale deployment/litellm-gateway --replicas=1
 
 echo "----------------------------------------------------------------------"
 echo "LiteLLM master key:"
