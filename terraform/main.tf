@@ -31,6 +31,7 @@ provider "aws" {
 # public module is used so the project is reproducible by anyone.
 # --------------------------------------------------------------------------
 module "eks" {
+  #checkov:skip=CKV_TF_1:Terraform Registry module pinned by version constraint and .terraform.lock.hcl, not a git source
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
 

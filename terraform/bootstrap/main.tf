@@ -8,13 +8,16 @@
 #   terraform init
 #   terraform apply
 #
-# Then, in terraform/ (the main module), uncomment the backend "s3" block
-# in main.tf and run:
+# Then copy the backend_hcl output into terraform/backend.hcl (see
+# terraform/backend.hcl.example) and, in terraform/ (the main module), run:
 #
 #   cd terraform
-#   terraform init -backend-config=../terraform/bootstrap/backend.hcl
+#   terraform init -backend-config=backend.hcl
 #
-# (backend.hcl is generated as an output of this bootstrap, see outputs.tf)
+# Checkov skips below are deliberate: this bucket holds a few KB of state for
+# a demo project, and each skipped control adds recurring cost (KMS keys, a
+# second bucket, cross-region storage) for little risk reduction. Versioning,
+# SSE, public access block and prevent_destroy cover the real risks.
 # --------------------------------------------------------------------------
 
 terraform {
@@ -36,6 +39,10 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "tfstate" {
+  #checkov:skip=CKV_AWS_18:Access logging needs a second bucket; not worth it for a single-user state bucket
+  #checkov:skip=CKV_AWS_144:Cross-region replication doubles storage cost; state is reproducible via versioning
+  #checkov:skip=CKV_AWS_145:SSE-S3 (AES256) instead of KMS to avoid per-key monthly cost
+  #checkov:skip=CKV2_AWS_62:No consumer for S3 event notifications on the state bucket
   bucket = var.state_bucket_name
 
   # Protection against accidental "terraform destroy" of the state bucket
@@ -49,6 +56,28 @@ resource "aws_s3_bucket_versioning" "tfstate" {
   versioning_configuration {
     status = "Enabled" # allows recovering a previous state if something corrupts the current one
   }
+}
+
+# Versioning keeps every past state; expire old versions so storage doesn't
+# grow forever, while keeping a 90-day recovery window.
+resource "aws_s3_bucket_lifecycle_configuration" "tfstate" {
+  bucket = aws_s3_bucket.tfstate.id
+
+  rule {
+    id     = "expire-noncurrent-state-versions"
+    status = "Enabled"
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.tfstate]
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "tfstate" {
@@ -69,6 +98,8 @@ resource "aws_s3_bucket_public_access_block" "tfstate" {
 }
 
 resource "aws_dynamodb_table" "tfstate_lock" {
+  #checkov:skip=CKV_AWS_119:Lock table only holds transient lock IDs; AWS-owned key encryption is enough
+  #checkov:skip=CKV_AWS_28:Point-in-time recovery is pointless for transient lock entries
   name         = var.lock_table_name
   billing_mode = "PAY_PER_REQUEST" # no fixed cost while the project is idle
   hash_key     = "LockID"
