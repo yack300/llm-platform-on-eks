@@ -38,9 +38,17 @@ checkov -d terraform/ --compact --quiet
 trivy fs --severity CRITICAL,HIGH --exit-code 1 .
 gitleaks detect --source . --verbose --redact
 kubeconform -summary -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/
-terraform -chdir=terraform fmt -check -recursive && terraform -chdir=terraform validate
-terraform -chdir=terraform/bootstrap validate
+terraform -chdir=terraform fmt -check -recursive
+terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate
+terraform -chdir=terraform/bootstrap init && terraform -chdir=terraform/bootstrap validate
+
+# Validate a single manifest instead of the whole tree
+kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/vllm/deployment.yaml
 ```
+
+`-ignore-missing-schemas` is required because the CRDs used here (ServiceMonitor,
+ScaledObject, Kyverno ClusterPolicy) have no public schema, so kubeconform silently
+skips them — a typo in those files will not be caught by CI.
 
 ## Architecture notes that span multiple files
 
@@ -49,7 +57,11 @@ resources (EKS cluster/node groups, IAM, S3/DynamoDB for state). Everything that
 *inside* the cluster — including cluster add-ons like the NVIDIA device plugin
 (`k8s/gpu/nvidia-device-plugin.yaml`) — is a plain Kubernetes manifest meant to be
 picked up by FluxCD, not a Terraform `helm_release`/`kubernetes_*` resource. When
-adding a new workload, follow this split rather than mixing the two.
+adding a new workload, follow this split rather than mixing the two. Note that the
+Flux objects themselves (`GitRepository`, `Kustomization`, `HelmRelease`) are **not**
+in this repo — Flux bootstrap lives outside it, and Helm-installed components
+(KEDA, Kyverno, kube-prometheus-stack, Qdrant) are only expressed here as values
+files plus the `helm upgrade --install` calls in `scripts/deploy-local.sh`.
 
 **Two parallel LiteLLM/vLLM configs — real GPU vs. local mock.** Because vLLM requires
 a real GPU, there are two versions of the inference backend that LiteLLM points to,
@@ -80,7 +92,9 @@ release name `prometheus`) that scrapes cost/latency metrics via the
 `ServiceMonitor`s in `k8s/observability/servicemonitors.yaml`. vLLM exposes native
 Prometheus metrics; LiteLLM needs `litellm_settings.success_callback`/
 `failure_callback: ["prometheus"]` set to expose its `/metrics` endpoint — this is
-what feeds `docs/cost-comparison.md`.
+what feeds `docs/cost-comparison.md`. OpenCost (infra-side cost) is not installed
+anywhere yet — it only appears as a documented next step in the comments at the end
+of `prometheus-grafana-values.yaml`.
 
 **CI has no build/deploy stage on purpose.** `.gitlab-ci.yml` only has `scan-iac`
 (Checkov, Trivy fs, GitLeaks) and `validate` (kubeconform against `k8s/`, `terraform
