@@ -34,6 +34,10 @@ spec:
       verifyImages:
         - imageReferences:
             - "REPLACE-WITH-YOUR-REGISTRY/*"
+          # Defaults to true, but Kyverno rejects mutateDigest with Audit
+          # (it would rewrite images while only auditing). Set back to true
+          # when switching validationFailureAction to Enforce.
+          mutateDigest: false
           attestors:
             - entries:
                 - keys:

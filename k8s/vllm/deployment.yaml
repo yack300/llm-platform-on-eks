@@ -46,11 +46,21 @@ spec:
             - "0.85"
           ports:
             - containerPort: 8000
+          securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml
+            allowPrivilegeEscalation: false
+            privileged: false
+          # Sized for the default g4dn.xlarge (4 vCPU, 16 GiB), leaving headroom
+          # for system DaemonSets (aws-node, kube-proxy, nvidia-device-plugin).
+          # CPU/memory limits are required by require-resource-limits.yaml.
           resources:
             limits:
               nvidia.com/gpu: 1
+              cpu: "3"
+              memory: 12Gi
             requests:
               nvidia.com/gpu: 1
+              cpu: "2"
+              memory: 8Gi
           readinessProbe:
             httpGet:
               path: /health

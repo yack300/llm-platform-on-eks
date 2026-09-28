@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: ollama
-          image: ollama/ollama:latest
+          image: ollama/ollama:0.34.4 # pinned: :latest is rejected by kyverno-policies/disallow-latest-tag.yaml
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -34,6 +34,9 @@ spec:
               wait
           ports:
             - containerPort: 11434
+          securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml
+            allowPrivilegeEscalation: false
+            privileged: false
           resources:
             requests:
               cpu: 500m

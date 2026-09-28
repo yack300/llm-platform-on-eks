@@ -26,6 +26,9 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+          securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml
+            allowPrivilegeEscalation: false
+            privileged: false
           resources:
             requests:
               cpu: 250m
