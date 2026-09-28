@@ -41,6 +41,27 @@ validate-k8s-manifests:
     # Operator's ServiceMonitor, KEDA's ScaledObject, Kyverno's ClusterPolicy)
     - kubeconform -summary -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/
 
+validate-kyverno-policies:
+  stage: validate
+  # The official kyverno-cli image is distroless (no shell), which GitLab
+  # needs to run `script`, so the pinned CLI binary is downloaded instead and
+  # verified against the release checksum. Keep KYVERNO_VERSION in sync with
+  # the Kyverno version running in the cluster.
+  image: alpine:3.20
+  variables:
+    KYVERNO_VERSION: v1.19.1
+    KYVERNO_SHA256: b38228f367fc0fdc2b08f4c83ea50ac5f16c60ff8d62d76a66157c33c47b70ae
+  script:
+    - apk add --no-cache curl
+    - curl -sSLo kyverno.tar.gz "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+    - echo "${KYVERNO_SHA256}  kyverno.tar.gz" | sha256sum -c -
+    - tar -xzf kyverno.tar.gz kyverno
+    # Runs the same admission policies the cluster enforces against the raw
+    # manifests, so a violation fails here instead of at Flux reconcile time.
+    # Exits non-zero on any failed rule. Helm-managed components (Qdrant,
+    # kube-prometheus-stack) aren't covered: only their values files live here.
+    - ./kyverno apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
+
 validate-terraform:
   stage: validate
   image: hashicorp/terraform:1.7
