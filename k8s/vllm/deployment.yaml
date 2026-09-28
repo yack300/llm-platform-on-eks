@@ -79,6 +79,8 @@ kind: Service
 metadata:
   name: vllm-inference
   namespace: llm-platform
+  labels:
+    app: vllm-inference # matched by the ServiceMonitor in k8s/observability/servicemonitors.yaml
 spec:
   selector:
     app: vllm-inference

@@ -73,6 +73,8 @@ kind: Service
 metadata:
   name: litellm-gateway
   namespace: llm-platform
+  labels:
+    app: litellm-gateway # matched by the ServiceMonitor in k8s/observability/servicemonitors.yaml
 spec:
   selector:
     app: litellm-gateway

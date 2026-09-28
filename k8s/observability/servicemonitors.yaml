@@ -40,7 +40,7 @@ spec:
     matchNames:
       - llm-platform
   endpoints:
-    # Requires litellm_settings.callbacks: ["prometheus"] in
+    # Requires litellm_settings.success_callback: ["prometheus"] in
     # k8s/litellm/configmap.yaml, which exposes /metrics on the same port
     # 4000 (cost per request/token, latency, success/failure per model).
     - port: "4000"
