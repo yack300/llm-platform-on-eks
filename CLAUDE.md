@@ -24,7 +24,7 @@ infra bootstrap and CI validation:
 ```bash
 # Local dev cluster (kind), no GPU required — installs KEDA, Kyverno,
 # kube-prometheus-stack, Qdrant, and an Ollama CPU mock instead of real vLLM
-cd scripts && ./deploy-local.sh
+./scripts/deploy-local.sh
 
 # Terraform remote state — run ONCE per AWS account before the main terraform/ apply
 cd terraform/bootstrap && terraform init && terraform apply

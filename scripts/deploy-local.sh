@@ -3,6 +3,10 @@
 # Goal: validate the gateway, RAG, and CI/CD logic without spending on AWS.
 set -euo pipefail
 
+# Manifest paths below are relative (../k8s/...), so always run from this
+# script's directory regardless of where it was invoked from.
+cd "$(dirname "$0")"
+
 CLUSTER_NAME="llm-platform-local"
 
 echo "==> Creating kind cluster (if it doesn't exist)..."
@@ -48,11 +52,25 @@ kubectl apply -f ../k8s/observability/servicemonitors.yaml
 echo "==> Applying local inference mock (Ollama, no GPU)..."
 kubectl apply -f ../k8s/vllm/local-cpu-mock-deployment.yaml
 
+echo "==> Creating LiteLLM secret (if it doesn't exist)..."
+# k8s/litellm/deployment.yaml loads litellm-secrets via envFrom, and the config
+# requires LITELLM_MASTER_KEY. Generated locally so no key is ever committed;
+# an existing secret is left untouched so re-runs keep the same key.
+if ! kubectl -n llm-platform get secret litellm-secrets >/dev/null 2>&1; then
+  kubectl -n llm-platform create secret generic litellm-secrets \
+    --from-literal=LITELLM_MASTER_KEY="sk-local-$(openssl rand -hex 16)"
+else
+  echo "Secret litellm-secrets already exists, skipping creation."
+fi
+
 echo "==> Applying LiteLLM (local config)..."
-kubectl apply -f ../k8s/litellm/deployment.yaml
+# ConfigMap first so pods don't start before their config exists.
 kubectl apply -f ../k8s/litellm/configmap-local.yaml
+kubectl apply -f ../k8s/litellm/deployment.yaml
 
 echo "----------------------------------------------------------------------"
+echo "LiteLLM master key:"
+echo "  kubectl -n llm-platform get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d"
 echo "Local setup ready: vllm/deployment.yaml (real GPU) and litellm/configmap.yaml"
 echo "(real vLLM) were NOT applied here — those are for terraform/ against real EKS."
 echo "To test against the real model, repeat this bootstrap on an EKS cluster"
