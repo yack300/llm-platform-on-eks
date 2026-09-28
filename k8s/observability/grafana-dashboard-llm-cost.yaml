@@ -1,0 +1,1176 @@
+# Grafana dashboard for the cost observability layer, loaded by the Grafana
+# sidecar in kube-prometheus-stack (it picks up any ConfigMap labeled
+# grafana_dashboard: "1", in any namespace — see prometheus-grafana-values.yaml).
+#
+# Answers the project's central question: what does self-hosted inference cost
+# per 1M tokens vs. a commercial API, and at what throughput does it break even
+# (see docs/cost-comparison.md). All token/latency data comes from LiteLLM's
+# Prometheus callback; vLLM panels only populate on the real GPU backend.
+#
+# API prices and the GPU node hourly cost are dashboard variables (editable in
+# the Grafana UI), not measurements. Infra cost is estimated from backend
+# replicas until OpenCost is installed.
+#
+# Edited by hand? Keep it valid JSON: Grafana silently skips invalid dashboards.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-llm-cost
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  llm-platform-cost.json: |
+    {
+      "uid": "llm-platform-cost",
+      "title": "LLM Platform: Cost and Performance",
+      "description": "Self-hosted inference cost vs. a commercial API, from LiteLLM gateway metrics.",
+      "tags": [
+        "llm-platform",
+        "finops",
+        "litellm",
+        "vllm"
+      ],
+      "editable": true,
+      "schemaVersion": 39,
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "refresh": "30s",
+      "graphTooltip": 1,
+      "panels": [
+        {
+          "type": "row",
+          "id": 1,
+          "title": "Cost: self-hosted vs. commercial API",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
+        },
+        {
+          "type": "stat",
+          "id": 2,
+          "title": "API-equivalent cost",
+          "description": "What the same input/output tokens would have cost on a commercial API at the reference prices set in the dashboard variables.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(sum(increase(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__range])) * $api_input_price + sum(increase(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__range])) * $api_output_price) / 1e6",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 4
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 3,
+          "title": "Self-hosted infra cost",
+          "description": "Backend replicas averaged over the range \u00d7 hours \u00d7 node hourly cost (one GPU node per vLLM replica). Scale-to-zero shows up here as a lower average. Replace with OpenCost data once installed.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "avg_over_time(sum(kube_deployment_status_replicas{namespace=\"llm-platform\",deployment=\"$backend\"})[$__range:1m]) * $__range_s / 3600 * $node_hourly_cost",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 4
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 4,
+          "title": "Self-hosted cost / 1M tokens",
+          "description": "Infra cost divided by tokens served. Falls as utilization rises: the core argument for (or against) self-hosting.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(avg_over_time(sum(kube_deployment_status_replicas{namespace=\"llm-platform\",deployment=\"$backend\"})[$__range:1m]) * $__range_s / 3600 * $node_hourly_cost) / ((sum(increase(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__range])) + sum(increase(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__range]))) / 1e6)",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 2
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 5,
+          "title": "API cost / 1M tokens (blended)",
+          "description": "Reference API cost per 1M tokens for this traffic's actual input/output mix.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "((sum(increase(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__range])) * $api_input_price + sum(increase(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__range])) * $api_output_price) / 1e6) / ((sum(increase(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__range])) + sum(increase(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__range]))) / 1e6)",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 2
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 6,
+          "title": "Hourly cost rate: API-equivalent vs. self-hosted",
+          "description": "Where the lines cross is the break-even throughput. Above the self-hosted line, the GPU pays for itself.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 16,
+            "x": 0,
+            "y": 5
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(sum(rate(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__rate_interval])) * $api_input_price + sum(rate(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__rate_interval])) * $api_output_price) * 3600 / 1e6",
+              "legendFormat": "API-equivalent ($/h)",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(kube_deployment_status_replicas{namespace=\"llm-platform\",deployment=\"$backend\"}) * $node_hourly_cost",
+              "legendFormat": "Self-hosted ($/h)",
+              "refId": "B"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 7,
+          "title": "LiteLLM tracked spend",
+          "description": "Real spend LiteLLM attributes from its cost map. Self-hosted models aren't in it, so this is only non-zero for traffic routed to external providers (e.g. fallbacks).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 5
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(increase(litellm_spend_metric_total{requested_model=~\"$model\"}[$__range]))",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 4
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "row",
+          "id": 8,
+          "title": "Traffic and reliability",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 13
+          },
+          "panels": []
+        },
+        {
+          "type": "stat",
+          "id": 9,
+          "title": "Requests",
+          "description": "Requests through the gateway in the selected range.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 14
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(increase(litellm_proxy_total_requests_metric_total{requested_model=~\"$model\"}[$__range]))",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 10,
+          "title": "Error rate",
+          "description": "Share of routed requests with a non-2xx status. Requests rejected at auth (401) never reach routing, so they are not counted here.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 14
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(sum(increase(litellm_proxy_total_requests_metric_total{requested_model=~\"$model\",status_code!~\"2..\"}[$__range])) or vector(0)) / sum(increase(litellm_proxy_total_requests_metric_total{requested_model=~\"$model\"}[$__range]))",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.01
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.05
+                  }
+                ]
+              },
+              "decimals": 1
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 11,
+          "title": "In-flight requests",
+          "description": "Requests currently being processed by the gateway. The Prometheus scrape itself counts, so an idle gateway reads 1 per replica.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 14
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(litellm_in_flight_requests)",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "stat",
+          "id": 12,
+          "title": "Tokens served",
+          "description": "Input + output tokens in the selected range.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 14
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "(sum(increase(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__range])) + sum(increase(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__range])))",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 13,
+          "title": "Request rate by status",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum by (status_code) (rate(litellm_proxy_total_requests_metric_total{requested_model=~\"$model\"}[$__rate_interval]))",
+              "legendFormat": "{{status_code}}",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 14,
+          "title": "Token throughput",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(rate(litellm_input_tokens_metric_total{requested_model=~\"$model\"}[$__rate_interval]))",
+              "legendFormat": "input tokens/s",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(rate(litellm_output_tokens_metric_total{requested_model=~\"$model\"}[$__rate_interval]))",
+              "legendFormat": "output tokens/s",
+              "refId": "B"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "row",
+          "id": 15,
+          "title": "Latency",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 26
+          },
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "id": 16,
+          "title": "End-to-end latency",
+          "description": "Total request latency as seen by the gateway.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 27
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(litellm_request_total_latency_metric_bucket{requested_model=~\"$model\"}[$__rate_interval])))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(litellm_request_total_latency_metric_bucket{requested_model=~\"$model\"}[$__rate_interval])))",
+              "legendFormat": "p95",
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(litellm_request_total_latency_metric_bucket{requested_model=~\"$model\"}[$__rate_interval])))",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 17,
+          "title": "Where the time goes (p95)",
+          "description": "Backend (model) latency vs. gateway overhead vs. time queued in the gateway.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 27
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(litellm_llm_api_latency_metric_bucket{requested_model=~\"$model\"}[$__rate_interval])))",
+              "legendFormat": "model backend",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(litellm_overhead_latency_metric_bucket{requested_model=~\"$model\"}[$__rate_interval])))",
+              "legendFormat": "gateway overhead",
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(litellm_request_queue_time_seconds_bucket{requested_model=~\"$model\"}[$__rate_interval])))",
+              "legendFormat": "queue time",
+              "refId": "C"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "row",
+          "id": 18,
+          "title": "Inference backend (vLLM, GPU only: empty on the local Ollama mock)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 35
+          },
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "id": 19,
+          "title": "Backend replicas",
+          "description": "Replicas of the selected backend Deployment. With KEDA minReplicaCount: 0, this drops to 0 when idle.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 36
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(kube_deployment_status_replicas{namespace=\"llm-platform\",deployment=\"$backend\"})",
+              "legendFormat": "replicas",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 20,
+          "title": "vLLM queue",
+          "description": "Requests waiting/running in vLLM. Waiting requests are the autoscaling signal.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 36
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(vllm:num_requests_waiting)",
+              "legendFormat": "waiting",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(vllm:num_requests_running)",
+              "legendFormat": "running",
+              "refId": "B"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 21,
+          "title": "vLLM generation throughput",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 36
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(rate(vllm:generation_tokens_total[$__rate_interval]))",
+              "legendFormat": "generated tokens/s",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "expr": "sum(rate(vllm:prompt_tokens_total[$__rate_interval]))",
+              "legendFormat": "prompt tokens/s",
+              "refId": "B"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          }
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "type": "datasource",
+            "name": "datasource",
+            "label": "Datasource",
+            "query": "prometheus",
+            "hide": 0
+          },
+          {
+            "type": "query",
+            "name": "model",
+            "label": "Model",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "query": {
+              "query": "label_values(litellm_proxy_total_requests_metric_total, requested_model)",
+              "refId": "model"
+            },
+            "definition": "label_values(litellm_proxy_total_requests_metric_total, requested_model)",
+            "includeAll": true,
+            "multi": true,
+            "allValue": ".*",
+            "refresh": 2,
+            "current": {
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "hide": 0
+          },
+          {
+            "type": "query",
+            "name": "backend",
+            "label": "Backend Deployment",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "query": {
+              "query": "label_values(kube_deployment_status_replicas{namespace=\"llm-platform\"}, deployment)",
+              "refId": "backend"
+            },
+            "definition": "label_values(kube_deployment_status_replicas{namespace=\"llm-platform\"}, deployment)",
+            "refresh": 2,
+            "current": {
+              "text": "vllm-inference",
+              "value": "vllm-inference"
+            },
+            "hide": 0
+          },
+          {
+            "type": "textbox",
+            "name": "api_input_price",
+            "label": "API $ / 1M input tokens",
+            "description": "Reference commercial API list price per 1M input tokens. Placeholder: set it to the provider/model you compare against.",
+            "query": "3",
+            "current": {
+              "text": "3",
+              "value": "3"
+            },
+            "hide": 0
+          },
+          {
+            "type": "textbox",
+            "name": "api_output_price",
+            "label": "API $ / 1M output tokens",
+            "description": "Reference commercial API list price per 1M output tokens. Placeholder: set it to the provider/model you compare against.",
+            "query": "15",
+            "current": {
+              "text": "15",
+              "value": "15"
+            },
+            "hide": 0
+          },
+          {
+            "type": "textbox",
+            "name": "node_hourly_cost",
+            "label": "GPU node $ / hour",
+            "description": "Hourly cost of one GPU node. Default: g4dn.xlarge on-demand in us-east-1; spot is usually much lower. Check current AWS pricing.",
+            "query": "0.526",
+            "current": {
+              "text": "0.526",
+              "value": "0.526"
+            },
+            "hide": 0
+          }
+        ]
+      }
+    }

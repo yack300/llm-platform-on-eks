@@ -45,8 +45,9 @@ helm upgrade --install qdrant qdrant/qdrant -n llm-platform -f ../k8s/qdrant/hel
 echo "==> Applying security policies..."
 kubectl apply -f ../k8s/security/kyverno-policies/
 
-echo "==> Applying ServiceMonitors..."
+echo "==> Applying ServiceMonitors and the Grafana dashboard..."
 kubectl apply -f ../k8s/observability/servicemonitors.yaml
+kubectl apply -f ../k8s/observability/grafana-dashboard-llm-cost.yaml
 
 # Local CPU mode: vllm/deployment.yaml requires a real GPU (not available in
 # kind/minikube), so locally we use a mock with real CPU inference (Ollama +

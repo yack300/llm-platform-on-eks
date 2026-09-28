@@ -53,8 +53,8 @@ alertmanager:
         memory: 128Mi
 
 # TODO after deploying:
-# 1. Import/build a dashboard with cost per request/token, p50/p95 latency,
-#    breakdown by model (local-mistral vs. external fallback).
+# 1. Dashboard: done, see grafana-dashboard-llm-cost.yaml (cost per 1M tokens
+#    self-hosted vs. API, break-even, p50/p95/p99, breakdown by model).
 # 2. Install OpenCost or Kubecost for the underlying infra cost:
 #    helm repo add opencost https://opencost.github.io/opencost-helm-chart
 #    helm install opencost opencost/opencost -n opencost --create-namespace

@@ -19,9 +19,10 @@
 2. **External provider cost:** the provider's public pricing (price per
    million input/output tokens) multiplied by the average tokens per
    request for your use case.
-3. **Latencies:** pull them from the Grafana dashboard once LiteLLM's
-   `prometheus` callback is exposing the custom metrics (see
-   `k8s/observability/`).
+3. **Latencies:** pull them from the "LLM Platform: Cost and Performance"
+   Grafana dashboard (`k8s/observability/grafana-dashboard-llm-cost.yaml`).
+   It also computes items 1 and 2 live: set the API prices and the GPU node
+   hourly cost in its variables, and select `vllm-inference` as the backend.
 
 ## Conclusion (to write at the end)
 

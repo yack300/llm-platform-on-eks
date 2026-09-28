@@ -64,8 +64,9 @@ GitLeaks in the pipeline, all 5 Kyverno policies written, image tags pinned).
 Still pending real-world validation:
 - Running `terraform apply` against a real AWS account (vpc_id/subnet_ids are
   required inputs with no default, see `terraform/variables.tf`).
-- Building the Grafana dashboard and filling in `docs/cost-comparison.md` with
-  real traffic data.
+- Filling in `docs/cost-comparison.md` with real traffic data from the Grafana
+  dashboard (`k8s/observability/grafana-dashboard-llm-cost.yaml`, already
+  validated locally against the Ollama mock).
 - `require-image-signature.yaml` ships in `Audit` mode with placeholder
   registry/key values — only relevant once a custom-built image exists (see
   `k8s/security/kyverno-policies/require-image-signature.yaml`).
