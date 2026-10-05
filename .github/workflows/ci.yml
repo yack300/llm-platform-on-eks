@@ -25,6 +25,9 @@ env:
   TRIVY_IMAGE: aquasec/trivy:0.74.0
   GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1
   KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.8.0
+  # Community JSON schemas for CRDs (Argo CD Application, KEDA ScaledObject,
+  # ServiceMonitor, Kyverno ClusterPolicy), pinned to a commit.
+  CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/4c8dc296d32b06d15ccde9668ff136c951f4d539/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
   # Keep in sync with the Kyverno version running in the cluster.
   KYVERNO_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.1
   TERRAFORM_IMAGE: hashicorp/terraform:1.16.4
@@ -61,12 +64,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # -ignore-missing-schemas: CRDs without a public schema (ServiceMonitor,
-      # ScaledObject, ClusterPolicy). -ignore-filename-pattern: Helm values
-      # files live under k8s/ but aren't Kubernetes manifests.
+      # CRD resources are validated against CRD_SCHEMAS; no
+      # -ignore-missing-schemas, so a CRD kind without a schema fails instead
+      # of being silently skipped. -ignore-filename-pattern: Helm values files
+      # live under k8s/ but aren't Kubernetes manifests.
       - run: >-
           docker run --rm -v "$PWD":/repo -w /repo "$KUBECONFORM_IMAGE"
-          -summary -strict -ignore-missing-schemas
+          -summary -strict
+          -schema-location default -schema-location "$CRD_SCHEMAS"
           -ignore-filename-pattern 'values(-local)?\.yaml$'
           -kubernetes-version 1.36.0 k8s/
 

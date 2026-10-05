@@ -38,18 +38,19 @@ cd terraform && terraform init -backend-config=backend.hcl && terraform apply
 docker run --rm -v "$PWD":/repo -w /repo bridgecrew/checkov:3.3.20 -d terraform/ --compact --quiet
 docker run --rm -v "$PWD":/repo -w /repo aquasec/trivy:0.74.0 fs --severity CRITICAL,HIGH --exit-code 1 .
 docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose
-docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.36.0 k8s/
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/4c8dc296d32b06d15ccde9668ff136c951f4d539/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.36.0 k8s/
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
 # Validate a single manifest instead of the whole tree
-kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.36.0 k8s/vllm/deployment.yaml
+# (single file: same docker command, with a file path instead of k8s/)
 ```
 
-`-ignore-missing-schemas` is required because the CRDs used here (ServiceMonitor,
-ScaledObject, Kyverno ClusterPolicy) have no public schema, so kubeconform silently
-skips them — a typo in those files will not be caught by CI.
+CRD resources (Argo CD Application, ScaledObject, ServiceMonitor, ClusterPolicy) are
+validated against the community datreeio/CRDs-catalog schemas, pinned to a commit in
+the workflow's `CRD_SCHEMAS`. There's deliberately no `-ignore-missing-schemas`: a new
+CRD kind without a schema in that catalog fails CI instead of being skipped silently.
 
 Checkov exceptions are deliberate and documented inline as `#checkov:skip=ID:reason`
 (mostly controls that add recurring AWS cost, like KMS keys or cross-region
