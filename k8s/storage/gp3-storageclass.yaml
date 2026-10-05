@@ -1,0 +1,22 @@
+# Default StorageClass for EKS (applied by Argo CD, see k8s/argocd/apps/).
+# EKS no longer ships a default StorageClass (since 1.30), so without this the
+# PVCs of Qdrant and Grafana stay Pending even with the EBS CSI driver add-on
+# installed (terraform/main.tf).
+#
+# reclaimPolicy Delete: deleting a PVC deletes its EBS volume. That's what
+# makes teardown clean, but only if the PVCs are deleted BEFORE
+# `terraform destroy`; volumes of a cluster destroyed with PVCs still in it
+# are orphaned and keep billing.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer # create the volume in the AZ of the node that runs the pod
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  encrypted: "true"

@@ -44,6 +44,16 @@ grafana:
       enabled: true
       label: grafana_dashboard
 
+# EKS manages the control plane, so etcd, the scheduler and the controller
+# manager can't be scraped; without this their targets show as down and
+# their default alerts fire forever.
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+
 alertmanager:
   enabled: true
   alertmanagerSpec:
