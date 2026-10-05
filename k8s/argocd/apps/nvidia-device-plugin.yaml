@@ -1,0 +1,27 @@
+# Advertises nvidia.com/gpu on GPU nodes so vLLM can be scheduled.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nvidia-device-plugin
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: https://github.com/yack300/ll-platform-on-eks.git
+    targetRevision: main
+    path: k8s/gpu
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

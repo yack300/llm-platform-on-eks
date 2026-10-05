@@ -1,0 +1,38 @@
+# Vector DB for RAG. Needs the gp3 StorageClass (wave -1) for its PVC.
+# The chart's test Pod (helm.sh/hook: test, :latest image) would fail the
+# Kyverno policies, but Argo CD ignores Helm test hooks, so it's never applied.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: qdrant
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-platform
+  # Multi-source: the chart from its Helm repo, the values file from this Git
+  # repo, so values stay in Git next to everything else.
+  sources:
+    - repoURL: https://qdrant.github.io/qdrant-helm
+      chart: qdrant
+      targetRevision: 1.19.1
+      helm:
+        releaseName: qdrant
+        valueFiles:
+          - $values/k8s/qdrant/helm-values.yaml
+    - repoURL: https://github.com/yack300/ll-platform-on-eks.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

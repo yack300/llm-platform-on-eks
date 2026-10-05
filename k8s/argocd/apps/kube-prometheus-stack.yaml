@@ -1,0 +1,39 @@
+# Prometheus + Grafana: cost/latency metrics and the KEDA trigger source.
+# Release name must stay "prometheus": the KEDA ScaledObject queries
+# prometheus-kube-prometheus-prometheus.monitoring.svc.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # Multi-source: the chart from its Helm repo, the values file from this Git
+  # repo, so values stay in Git next to everything else.
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 91.9.0
+      helm:
+        releaseName: prometheus
+        valueFiles:
+          - $values/k8s/observability/prometheus-grafana-values.yaml
+    - repoURL: https://github.com/yack300/ll-platform-on-eks.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # CRDs too large for client-side apply annotations

@@ -1,0 +1,28 @@
+# Root "app of apps": the only thing applied by hand (scripts/bootstrap-argocd.sh).
+# It syncs every Application in k8s/argocd/apps/, which in turn deploy the
+# platform from this repo. Order comes from argocd.argoproj.io/sync-wave on
+# each child Application: -1 storage, 0 operators and add-ons, 1 resources that
+# need their CRDs, 2 the LLM workloads.
+#
+# repoURL must point at the public GitHub repo Argo CD pulls from; update it
+# if the repo is renamed or forked.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  source:
+    repoURL: https://github.com/yack300/ll-platform-on-eks.git
+    targetRevision: main
+    path: k8s/argocd/apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

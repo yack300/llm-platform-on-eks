@@ -1,0 +1,31 @@
+# Gateway. Needs the litellm-secrets Secret, created out of band by
+# scripts/bootstrap-argocd.sh (never committed to this public repo).
+# The *-local* files are for kind only and are excluded.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: litellm
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-platform
+  source:
+    repoURL: https://github.com/yack300/ll-platform-on-eks.git
+    targetRevision: main
+    path: k8s/litellm
+    directory:
+      exclude: "*local*"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

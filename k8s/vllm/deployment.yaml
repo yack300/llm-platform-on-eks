@@ -9,7 +9,9 @@ metadata:
   labels:
     app: vllm-inference
 spec:
-  replicas: 1
+  # No replicas field: KEDA (keda-scaledobject.yaml) owns the replica count,
+  # including 0. A fixed value here would make Argo CD's self-heal undo every
+  # scale-down.
   selector:
     matchLabels:
       app: vllm-inference

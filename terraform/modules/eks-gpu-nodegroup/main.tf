@@ -3,12 +3,12 @@
 #
 # The NVIDIA device plugin (DaemonSet) is NOT installed here via Terraform:
 # it's deployed as a manifest in k8s/gpu/nvidia-device-plugin.yaml,
-# reconciled by FluxCD, following the same pattern as the rest of the repo
-# (Terraform = AWS infra, Flux = cluster workloads). See that file for the
+# synced by Argo CD, following the same pattern as the rest of the repo
+# (Terraform = AWS infra, Argo CD = cluster workloads). See that file for the
 # toleration to the nvidia.com/gpu=present:NoSchedule taint defined below.
 #
 # Alternative if more complete management is needed in the future (drivers,
-# container toolkit, DCGM exporter): NVIDIA GPU Operator, also via Flux.
+# container toolkit, DCGM exporter): NVIDIA GPU Operator, also via Argo CD.
 # --------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "eks_node_assume_role" {

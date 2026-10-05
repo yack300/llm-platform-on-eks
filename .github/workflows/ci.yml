@@ -1,6 +1,6 @@
 # There's no custom image to build here (this repo deploys third-party OSS
 # images: vllm/vllm-openai, litellm, qdrant, ollama), so there's no
-# build/push/deploy job. FluxCD watches the repo and reconciles whatever lands
+# build/push/deploy job. Argo CD watches the repo and syncs whatever lands
 # on main; CI only gates what's allowed to reach main (GitOps: no manual
 # kubectl/deploy, everything goes through Git).
 #
@@ -81,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Runs the same admission policies the cluster enforces against the raw
-      # manifests, so a violation fails here instead of at Flux reconcile time.
+      # manifests, so a violation fails here instead of at Argo CD sync time.
       # Helm-managed components (Qdrant, kube-prometheus-stack) aren't covered:
       # only their values files live here.
       - run: >-

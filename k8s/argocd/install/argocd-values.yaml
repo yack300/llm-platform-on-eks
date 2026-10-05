@@ -1,0 +1,70 @@
+# Helm values for Argo CD itself (chart argo/argo-cd). Installed once, by
+# scripts/bootstrap-argocd.sh, before anything else: Argo CD can't deploy
+# itself into an empty cluster. Everything after that comes from Git through
+# k8s/argocd/root.yaml.
+#
+# Trimmed for a single-user demo: no SSO (Dex), no notifications, no
+# ApplicationSets, single replicas. Access the UI with a port-forward (see the
+# bootstrap script output); there's no Ingress/LoadBalancer on purpose (a
+# LoadBalancer would bill per hour).
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+applicationSet:
+  replicas: 0
+
+configs:
+  cm:
+    # Argo CD no longer reports Application health by default, so sync waves
+    # between child Applications (app of apps) wouldn't wait for each other:
+    # policies could sync before Kyverno's CRDs exist. This restores the health
+    # check so each wave waits until the previous Applications are Healthy.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi

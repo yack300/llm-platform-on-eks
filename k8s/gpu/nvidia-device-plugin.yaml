@@ -1,11 +1,11 @@
 # NVIDIA device plugin: exposes nvidia.com/gpu as a schedulable resource on
 # the nodes of the GPU node group (created in
-# terraform/modules/eks-gpu-nodegroup/). Reconciled by FluxCD, not by
-# Terraform (Terraform = AWS infra, Flux = cluster workloads).
+# terraform/modules/eks-gpu-nodegroup/). Synced by Argo CD, not by
+# Terraform (Terraform = AWS infra, Argo CD = cluster workloads).
 #
 # Source: https://github.com/NVIDIA/k8s-device-plugin
 # If more complete management is needed in the future (drivers, container
-# toolkit, DCGM exporter), migrate to the NVIDIA GPU Operator (also via Flux).
+# toolkit, DCGM exporter), migrate to the NVIDIA GPU Operator (also via Argo CD).
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -34,7 +34,7 @@ spec:
       priorityClassName: "system-node-critical"
       containers:
         - name: nvidia-device-plugin-ctr
-          image: nvcr.io/nvidia/k8s-device-plugin:v0.16.2
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.20.1
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

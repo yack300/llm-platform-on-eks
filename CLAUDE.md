@@ -5,12 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repo is
 
 Reference/portfolio platform demonstrating LLM inference serving, gateway, RAG, cost
-observability, and security on EKS, using the same GitOps pattern (Terraform + FluxCD)
+observability, and security on EKS, using the same GitOps pattern (Terraform + Argo CD)
 used in production elsewhere. It is infrastructure/config only — there is no
 application code and no Dockerfile; every workload is an upstream OSS image
 (`vllm/vllm-openai`, `ghcr.io/berriai/litellm`, `qdrant/qdrant`, `ollama/ollama`)
 deployed via Terraform (AWS resources) and Kubernetes manifests / Helm values
-(cluster workloads, reconciled by FluxCD — never `kubectl apply` by hand).
+(cluster workloads, synced by Argo CD — never `kubectl apply` by hand on EKS).
 
 All 5 layers are meant to work together but are logically independent — see the table
 in [README.md](README.md) (Serving/vLLM+KEDA, Gateway/LiteLLM, RAG/Qdrant, Cost
@@ -30,8 +30,14 @@ infra bootstrap and CI validation:
 cd terraform/bootstrap && terraform init && terraform apply
 # copy the `backend_hcl` output into terraform/backend.hcl (see backend.hcl.example)
 
-# Main infra (EKS cluster + GPU node group) — real AWS, real cost
-cd terraform && terraform init -backend-config=backend.hcl && terraform apply
+# Main infra (EKS cluster + node groups) — real AWS, real cost
+cd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=["<ip>/32"]'
+
+# Hand the cluster to Argo CD (installs it, creates the LiteLLM secret, applies root.yaml)
+./scripts/bootstrap-argocd.sh            # ANTHROPIC_API_KEY=... optional, for claude-fallback
+
+# Teardown: ALWAYS before terraform destroy (deletes PVC-backed EBS volumes)
+./scripts/teardown-eks.sh
 
 # What CI runs (.github/workflows/ci.yml), with the same pinned images, useful to
 # replicate locally before pushing (image versions live in the workflow's env:)
@@ -66,16 +72,34 @@ or it will be rejected both in CI and at admission time.
 
 ## Architecture notes that span multiple files
 
-**Terraform vs. Flux split is load-bearing.** Terraform only ever provisions AWS
-resources (EKS cluster/node groups, IAM, S3 for state). Everything that runs
-*inside* the cluster — including cluster add-ons like the NVIDIA device plugin
-(`k8s/gpu/nvidia-device-plugin.yaml`) — is a plain Kubernetes manifest meant to be
-picked up by FluxCD, not a Terraform `helm_release`/`kubernetes_*` resource. When
-adding a new workload, follow this split rather than mixing the two. Note that the
-Flux objects themselves (`GitRepository`, `Kustomization`, `HelmRelease`) are **not**
-in this repo — Flux bootstrap lives outside it, and Helm-installed components
-(KEDA, Kyverno, kube-prometheus-stack, Qdrant) are only expressed here as values
-files plus the `helm upgrade --install` calls in `scripts/deploy-local.sh`.
+**Terraform vs. Argo CD split is load-bearing.** Terraform only ever provisions AWS
+resources (EKS cluster/node groups, add-ons, IAM/Pod Identity, S3 for state).
+Everything that runs *inside* the cluster — including cluster add-ons like the NVIDIA
+device plugin and the Cluster Autoscaler — is deployed by Argo CD from this repo, not
+by a Terraform `helm_release`/`kubernetes_*` resource. When adding a new workload,
+follow this split rather than mixing the two.
+
+**Argo CD layout (`k8s/argocd/`).** `scripts/bootstrap-argocd.sh` is the only
+imperative step on EKS: it installs Argo CD (`install/argocd-values.yaml`), creates the
+`litellm-secrets` Secret (never in Git: the repo is public), and applies `root.yaml`,
+an app-of-apps over `apps/`. Each file in `apps/` is one `Application`: plain
+directories of this repo (excluding `*local*` files), or Helm charts as multi-source
+apps (chart from its repo + `$values/<path>` from this repo). Sync waves order them
+(-1 StorageClass, 0 operators/add-ons, 1 things needing their CRDs, 2 vLLM/LiteLLM);
+waves only wait on child Applications because `argocd-values.yaml` restores the
+Application health check. To add a component: add an `apps/<name>.yaml` with the right
+wave; chart versions are pinned in each file. `root.yaml` and every app point at the
+GitHub repo URL; change them together if the repo is renamed. `scripts/deploy-local.sh`
+still installs the same components with `helm upgrade --install` for kind, without
+Argo CD (memory).
+
+**Things on EKS that only exist for EKS:** the gp3 default StorageClass
+(`k8s/storage/`, EKS ships none), the EBS CSI driver and Cluster Autoscaler IAM
+(Terraform), control plane ServiceMonitors disabled in the Prometheus values. vLLM's
+Deployment has no `replicas` and its Application ignores `/spec/replicas`, because KEDA
+owns the count; adding `replicas` back would make self-heal undo every scale-to-zero.
+Teardown must go through `scripts/teardown-eks.sh` before `terraform destroy`:
+destroying with PVCs still present orphans their EBS volumes, which keep billing.
 
 **Two parallel LiteLLM/vLLM configs — real GPU vs. local mock.** Because vLLM requires
 a real GPU, there are two versions of the inference backend that LiteLLM points to,
@@ -132,7 +156,7 @@ wakes on the next request).
 **CI has no build/deploy stage on purpose.** `.github/workflows/ci.yml` runs scans
 (Checkov, Trivy fs, GitLeaks) and, once they pass, validation (kubeconform and
 `kyverno apply` against `k8s/`, `terraform validate`/`fmt` against `terraform/` and
-`terraform/bootstrap/`) — it gates what's allowed to reach `main`, then FluxCD reconciles directly from `main`. If real
+`terraform/bootstrap/`) — it gates what's allowed to reach `main`, then Argo CD syncs directly from `main`. If real
 application code is ever added to this repo (e.g. the RAG ingestion pipeline, which
 today explicitly lives outside this repo per the comment in
 `k8s/qdrant/helm-values.yaml`), build/push stages would need to come back.

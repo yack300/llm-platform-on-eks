@@ -1,0 +1,50 @@
+# Adds/removes nodes: wakes the GPU node group from 0 when a vLLM pod is
+# Pending and removes idle nodes. IAM comes from EKS Pod Identity
+# (terraform/main.tf, service account kube-system/cluster-autoscaler), so
+# no credentials or annotations here. clusterName/awsRegion must match the
+# Terraform cluster_name/aws_region.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-autoscaler
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: https://kubernetes.github.io/autoscaler
+    chart: cluster-autoscaler
+    targetRevision: 9.59.0
+    helm:
+      releaseName: cluster-autoscaler
+      valuesObject:
+        cloudProvider: aws
+        awsRegion: us-east-1
+        autoDiscovery:
+          clusterName: llm-platform-demo
+        rbac:
+          serviceAccount:
+            name: cluster-autoscaler
+        # The chart's default image is 1.35; match the cluster's minor version.
+        image:
+          tag: v1.36.1
+        extraArgs:
+          # Cost: remove a node 5 minutes after it becomes unneeded (default 10).
+          scale-down-unneeded-time: 5m
+          scale-down-delay-after-add: 5m
+          expander: least-waste
+          balance-similar-node-groups: true
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

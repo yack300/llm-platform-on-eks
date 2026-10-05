@@ -2,7 +2,7 @@
 
 Reference platform demonstrating serving, gateway, RAG, cost observability, and
 security for LLM inference workloads on Kubernetes (EKS), using the same GitOps
-pattern (Terraform + FluxCD) used in production.
+pattern (Terraform for AWS, Argo CD for everything in the cluster) used in production.
 
 ## Project layers
 
@@ -28,15 +28,19 @@ llm-platform-on-eks/
 │   ├── vllm/                  # Deployment (GPU) + local-cpu-mock (Ollama) + Service + KEDA ScaledObject
 │   ├── litellm/                # Gateway: Deployment + ConfigMap (real vs. local) (routing/rate limits)
 │   ├── qdrant/                  # Vector DB for RAG (Helm values)
-│   ├── gpu/                     # NVIDIA device plugin DaemonSet (reconciled by Flux)
+│   ├── argocd/                 # Argo CD: install values, root app-of-apps, one Application per component
+│   ├── storage/                # Default gp3 StorageClass (EKS ships none)
+│   ├── gpu/                     # NVIDIA device plugin DaemonSet
 │   ├── security/                # Kyverno policies + Trivy-operator config
 │   └── observability/         # kube-prometheus-stack values + ServiceMonitors (cost/latency)
 ├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform
-│                               # (no build/push: no custom image, Flux reconciles main directly)
+│                               # (no build/push: no custom image, Argo CD syncs main directly)
 ├── docs/
 │   └── cost-comparison.md      # Cost-per-1,000-requests table (local vs. external provider)
 └── scripts/
-    └── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
+    ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
+    ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
+    └── teardown-eks.sh         # EKS: delete apps and PVC volumes before terraform destroy
 ```
 
 ## Getting started (recommended order)
@@ -48,12 +52,15 @@ llm-platform-on-eks/
    a. `cd terraform/bootstrap && terraform init && terraform apply` — creates the S3
       bucket for remote state (done once).
    b. Copy the `backend_hcl` output to `terraform/backend.hcl` (see `backend.hcl.example`).
-   c. `cd terraform && terraform init -backend-config=backend.hcl && terraform apply`
-      against real AWS, to create the EKS cluster and the GPU node group (spot instances).
-   d. Apply `k8s/vllm/deployment.yaml`, `k8s/litellm/configmap.yaml` (the GPU variants,
-      not the `-local` ones), and `k8s/gpu/nvidia-device-plugin.yaml` against the real cluster.
-3. **Important:** destroy the AWS infrastructure (`terraform destroy` in `terraform/`)
-   when you're not actively using it. The Cluster Autoscaler removes idle GPU nodes,
+   c. `cd terraform && terraform init -backend-config=backend.hcl && terraform apply
+      -var='admin_cidrs=["<your-ip>/32"]'` against real AWS, to create the EKS cluster and
+      the node groups (spot instances).
+   d. `./scripts/bootstrap-argocd.sh` — installs Argo CD and applies the root
+      app-of-apps; from then on Argo CD deploys everything else from this repo
+      (`k8s/argocd/apps/`), in order, excluding the `*-local*` files.
+3. **Important:** when you're done, run `./scripts/teardown-eks.sh` (deletes the
+   apps and the EBS volumes behind PVCs, which `terraform destroy` would orphan),
+   then `terraform destroy` in `terraform/`. The Cluster Autoscaler removes idle GPU nodes,
    but the EKS control plane and the platform nodes are billed hourly while they exist.
 
 ## Current status

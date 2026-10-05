@@ -1,0 +1,37 @@
+# GPU inference + its KEDA ScaledObject. *-local* files are excluded.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vllm
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-platform
+  source:
+    repoURL: https://github.com/yack300/ll-platform-on-eks.git
+    targetRevision: main
+    path: k8s/vllm
+    directory:
+      exclude: "*local*"
+  # KEDA owns the replica count (including 0); don't treat it as drift.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: vllm-inference
+      jsonPointers:
+        - /spec/replicas
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
