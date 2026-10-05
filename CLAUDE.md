@@ -38,13 +38,13 @@ cd terraform && terraform init -backend-config=backend.hcl && terraform apply
 docker run --rm -v "$PWD":/repo -w /repo bridgecrew/checkov:3.3.20 -d terraform/ --compact --quiet
 docker run --rm -v "$PWD":/repo -w /repo aquasec/trivy:0.74.0 fs --severity CRITICAL,HIGH --exit-code 1 .
 docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose
-docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.30.0 k8s/
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -ignore-missing-schemas -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.36.0 k8s/
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
 # Validate a single manifest instead of the whole tree
-kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.30.0 k8s/vllm/deployment.yaml
+kubeconform -strict -ignore-missing-schemas -kubernetes-version 1.36.0 k8s/vllm/deployment.yaml
 ```
 
 `-ignore-missing-schemas` is required because the CRDs used here (ServiceMonitor,
@@ -119,8 +119,11 @@ vLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.
 Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,
 which doesn't count requests that failed because the backend was down. While vLLM
 cold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0
-also needs a GPU node, and there is no Cluster Autoscaler/Karpenter yet: with
-`gpu_nodes_desired = 0` the vLLM pod stays Pending. `keda-scaledobject-local.yaml`
+also needs a GPU node: Terraform gives the Cluster Autoscaler its IAM role (EKS Pod
+Identity, service account `kube-system/cluster-autoscaler`) and tags the GPU ASG with
+`node-template` resources/taints so it can scale that group up from 0. The
+autoscaler itself is deployed in-cluster (by Argo CD); until then the vLLM pod stays
+Pending. `keda-scaledobject-local.yaml`
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
 
@@ -133,7 +136,9 @@ today explicitly lives outside this repo per the comment in
 `k8s/qdrant/helm-values.yaml`), build/push stages would need to come back.
 
 **Cost control is a running theme, not just a comment.** `gpu_nodes_desired` defaults
-to `0` (`terraform/variables.tf`), the GPU node group uses spot capacity by default,
+to `0` (`terraform/variables.tf`; afterwards the Cluster Autoscaler owns the count and
+Terraform ignores it), GPU and platform node groups use spot capacity, the default VPC
+avoids a NAT Gateway,
 and KEDA's `minReplicaCount: 0` scales vLLM to zero when idle. Don't change these
 defaults without a reason — the whole point of the project is demonstrating
 cost-aware AI infra.
@@ -150,5 +155,9 @@ cost-aware AI infra.
   controllers are disabled. The full stack at production settings exhausts that
   memory and takes down the kind control plane, so keep local overrides in the
   script or `*-local*` files rather than trimming the production manifests.
-- `vpc_id` and `subnet_ids` (`terraform/variables.tf`) have no defaults — they're
-  required inputs for any real `terraform apply`, since the module doesn't create a VPC.
+- `terraform/` uses the account's default VPC unless both `vpc_id` and `subnet_ids`
+  are set. `admin_cidrs` (who can reach the public EKS API) has no default on
+  purpose and is required for any `plan`/`apply`, e.g.
+  `-var='admin_cidrs=["<ip>/32"]'`. Keep `kubernetes_version` in EKS *standard*
+  support: extended support bills a much higher hourly rate, and retired versions
+  can't be created (1.30 already can't).

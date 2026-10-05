@@ -12,9 +12,9 @@
 # cold-starting, LiteLLM serves requests through its fallback (see
 # router_settings.fallbacks in k8s/litellm/configmap.yaml).
 #
-# Waking from 0 also needs a GPU node: with gpu_nodes_desired = 0, the pod
-# stays Pending unless a node autoscaler (Cluster Autoscaler/Karpenter) is
-# installed.
+# Waking from 0 also needs a GPU node: the GPU node group starts at 0, so the
+# Cluster Autoscaler adds one when the vLLM pod is Pending (see the
+# node-template ASG tags in terraform/modules/eks-gpu-nodegroup).
 #
 # k8s/vllm/keda-scaledobject-local.yaml mirrors these triggers against the
 # local Ollama mock; keep both in sync.

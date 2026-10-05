@@ -11,7 +11,8 @@ output "configure_kubectl" {
   value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.aws_region}"
 }
 
-output "gpu_nodegroup_status" {
-  description = "Remember to set gpu_nodes_desired = 0 when you're not using the project"
-  value       = "Desired GPU nodes: ${var.gpu_nodes_desired}"
+
+output "gpu_subnet_ids" {
+  description = "Subnets the GPU node group can use (AZs that offer the GPU instance type)"
+  value       = local.gpu_subnet_ids
 }

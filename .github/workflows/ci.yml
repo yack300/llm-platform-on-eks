@@ -68,7 +68,7 @@ jobs:
           docker run --rm -v "$PWD":/repo -w /repo "$KUBECONFORM_IMAGE"
           -summary -strict -ignore-missing-schemas
           -ignore-filename-pattern 'values(-local)?\.yaml$'
-          -kubernetes-version 1.30.0 k8s/
+          -kubernetes-version 1.36.0 k8s/
 
   kyverno:
     needs: [checkov, trivy-fs, gitleaks]

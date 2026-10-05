@@ -52,9 +52,9 @@ llm-platform-on-eks/
       against real AWS, to create the EKS cluster and the GPU node group (spot instances).
    d. Apply `k8s/vllm/deployment.yaml`, `k8s/litellm/configmap.yaml` (the GPU variants,
       not the `-local` ones), and `k8s/gpu/nvidia-device-plugin.yaml` against the real cluster.
-3. **Important:** destroy the AWS infrastructure (`terraform destroy` in `terraform/`,
-   or set `gpu_nodes_desired = 0`) when you're not actively using it. The EKS control
-   plane and the GPU node are billed hourly.
+3. **Important:** destroy the AWS infrastructure (`terraform destroy` in `terraform/`)
+   when you're not actively using it. The Cluster Autoscaler removes idle GPU nodes,
+   but the EKS control plane and the platform nodes are billed hourly while they exist.
 
 ## Current status
 
@@ -62,8 +62,8 @@ All layers have complete manifests/config with no pending placeholders (HF model
 fixed, Terraform state backend resolved, observability on Prometheus/Grafana,
 GitLeaks in the pipeline, all 5 Kyverno policies written, image tags pinned).
 Still pending real-world validation:
-- Running `terraform apply` against a real AWS account (vpc_id/subnet_ids are
-  required inputs with no default, see `terraform/variables.tf`).
+- Running `terraform apply` against a real AWS account (`terraform plan` already
+  verified against one: uses the default VPC; `admin_cidrs` is a required input).
 - Filling in `docs/cost-comparison.md` with real traffic data from the Grafana
   dashboard (`k8s/observability/grafana-dashboard-llm-cost.yaml`, already
   validated locally against the Ollama mock).
