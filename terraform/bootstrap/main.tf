@@ -1,5 +1,6 @@
 # --------------------------------------------------------------------------
-# Bootstrap for Terraform's remote backend (S3 + DynamoDB lock).
+# Bootstrap for Terraform's remote backend (S3, with native S3 state locking
+# via use_lockfile: no DynamoDB table needed since Terraform 1.10).
 #
 # Applied ONCE, with local state (chicken-and-egg problem: you can't use the
 # bucket as the backend of the same config that creates it). Flow:
@@ -21,12 +22,12 @@
 # --------------------------------------------------------------------------
 
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.11"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.59"
     }
   }
   # No remote backend here on purpose: this config bootstraps the backend
@@ -95,17 +96,4 @@ resource "aws_s3_bucket_public_access_block" "tfstate" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
-
-resource "aws_dynamodb_table" "tfstate_lock" {
-  #checkov:skip=CKV_AWS_119:Lock table only holds transient lock IDs; AWS-owned key encryption is enough
-  #checkov:skip=CKV_AWS_28:Point-in-time recovery is pointless for transient lock entries
-  name         = var.lock_table_name
-  billing_mode = "PAY_PER_REQUEST" # no fixed cost while the project is idle
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
 }

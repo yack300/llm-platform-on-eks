@@ -8,9 +8,3 @@ variable "state_bucket_name" {
   description = "S3 bucket name for Terraform state. Must be globally unique: suggested <your-name-or-account>-llm-platform-tfstate"
   type        = string
 }
-
-variable "lock_table_name" {
-  description = "DynamoDB table name used for state locking"
-  type        = string
-  default     = "llm-platform-tfstate-lock"
-}

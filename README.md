@@ -19,7 +19,7 @@ pattern (Terraform + FluxCD) used in production.
 ```
 llm-platform-on-eks/
 ├── terraform/
-│   ├── bootstrap/            # One-time bootstrap: S3 bucket + DynamoDB table for remote state
+│   ├── bootstrap/            # One-time bootstrap: S3 bucket for remote state (native S3 locking)
 │   ├── modules/
 │   │   └── eks-gpu-nodegroup/  # GPU node group: IAM role, taint, spot capacity_type
 │   ├── main.tf                # EKS cluster (official module) + base node group + GPU node group
@@ -46,7 +46,7 @@ llm-platform-on-eks/
    security policies without spending on GPU.
 2. Once the logic works locally:
    a. `cd terraform/bootstrap && terraform init && terraform apply` — creates the S3
-      bucket and DynamoDB table for remote state (done once).
+      bucket for remote state (done once).
    b. Copy the `backend_hcl` output to `terraform/backend.hcl` (see `backend.hcl.example`).
    c. `cd terraform && terraform init -backend-config=backend.hcl && terraform apply`
       against real AWS, to create the EKS cluster and the GPU node group (spot instances).

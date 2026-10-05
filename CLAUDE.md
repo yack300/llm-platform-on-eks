@@ -66,7 +66,7 @@ or it will be rejected both in CI and at admission time.
 ## Architecture notes that span multiple files
 
 **Terraform vs. Flux split is load-bearing.** Terraform only ever provisions AWS
-resources (EKS cluster/node groups, IAM, S3/DynamoDB for state). Everything that runs
+resources (EKS cluster/node groups, IAM, S3 for state). Everything that runs
 *inside* the cluster — including cluster add-ons like the NVIDIA device plugin
 (`k8s/gpu/nvidia-device-plugin.yaml`) — is a plain Kubernetes manifest meant to be
 picked up by FluxCD, not a Terraform `helm_release`/`kubernetes_*` resource. When
@@ -94,7 +94,8 @@ difference: only the production config defines the `claude-fallback` model and
 `fallbacks`, since there's no Anthropic key locally.
 
 **Terraform remote state has its own bootstrap module.** `terraform/bootstrap/`
-creates the S3 bucket + DynamoDB lock table for `terraform/`'s own state, and is
+creates the S3 bucket (native S3 locking via `use_lockfile`, no DynamoDB) for
+`terraform/`'s own state, and is
 applied once, standalone, with local state (chicken-and-egg: you can't use a bucket
 as backend for the config that creates it). `terraform/main.tf` uses `backend "s3" {}`
 (empty — partial config) resolved via `-backend-config=backend.hcl`, which is

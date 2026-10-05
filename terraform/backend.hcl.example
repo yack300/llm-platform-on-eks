@@ -3,8 +3,8 @@
 #
 # Usage: terraform init -backend-config=backend.hcl
 
-bucket         = "YOUR-ACCOUNT-llm-platform-tfstate"
-key            = "llm-platform-on-eks/terraform.tfstate"
-region         = "us-east-1"
-dynamodb_table = "llm-platform-tfstate-lock"
-encrypt        = true
+bucket       = "YOUR-ACCOUNT-llm-platform-tfstate"
+key          = "llm-platform-on-eks/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true # native S3 state locking (Terraform >= 1.10), no DynamoDB table
+encrypt      = true
