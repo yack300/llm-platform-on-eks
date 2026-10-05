@@ -27,7 +27,7 @@ spec:
         releaseName: qdrant
         valueFiles:
           - $values/k8s/qdrant/helm-values.yaml
-    - repoURL: https://github.com/yack300/ll-platform-on-eks.git
+    - repoURL: https://github.com/yack300/llm-platform-on-eks.git
       targetRevision: main
       ref: values
   syncPolicy:

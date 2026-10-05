@@ -16,7 +16,7 @@ spec:
     server: https://kubernetes.default.svc
     namespace: kube-system
   source:
-    repoURL: https://github.com/yack300/ll-platform-on-eks.git
+    repoURL: https://github.com/yack300/llm-platform-on-eks.git
     targetRevision: main
     path: k8s/gpu
   syncPolicy:
