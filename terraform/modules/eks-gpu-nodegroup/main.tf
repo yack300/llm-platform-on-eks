@@ -64,6 +64,12 @@ variable "desired_size" {
   type = number
 }
 
+variable "disk_size" {
+  description = "Root volume size (GiB) for GPU nodes. The vLLM image alone unpacks to well over the 20 GiB default, plus the model weights and Hugging Face cache."
+  type        = number
+  default     = 100
+}
+
 resource "aws_eks_node_group" "gpu" {
   cluster_name    = var.cluster_name
   node_group_name = "gpu-inference"
@@ -77,6 +83,11 @@ resource "aws_eks_node_group" "gpu" {
 
   capacity_type  = var.use_spot ? "SPOT" : "ON_DEMAND"
   instance_types = [var.instance_type]
+
+  # With the 20 GiB default the vLLM image pull filled the disk: the kubelet
+  # evicted the pod on DiskPressure and tainted the node (found on the first
+  # EKS run).
+  disk_size = var.disk_size
 
   scaling_config {
     desired_size = var.desired_size
