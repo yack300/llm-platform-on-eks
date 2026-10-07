@@ -185,6 +185,34 @@ module "cluster_autoscaler_pod_identity" {
 }
 
 # --------------------------------------------------------------------------
+# Node-to-node traffic between the two node groups. The platform nodes (EKS
+# module) only carry the module's node security group, whose CoreDNS rules
+# allow traffic from itself only; the GPU nodes (own module, no launch
+# template) only carry the EKS cluster primary security group. Without these
+# rules, pods on GPU nodes can't resolve DNS (vLLM can't reach Hugging Face)
+# and LiteLLM/Prometheus can't reach vLLM. Found on the first EKS run.
+# --------------------------------------------------------------------------
+resource "aws_security_group_rule" "platform_nodes_from_gpu_nodes" {
+  description              = "All traffic from GPU nodes (cluster primary SG) to platform nodes"
+  type                     = "ingress"
+  protocol                 = "-1"
+  from_port                = 0
+  to_port                  = 0
+  security_group_id        = module.eks.node_security_group_id
+  source_security_group_id = module.eks.cluster_primary_security_group_id
+}
+
+resource "aws_security_group_rule" "gpu_nodes_from_platform_nodes" {
+  description              = "All traffic from platform nodes to GPU nodes (cluster primary SG)"
+  type                     = "ingress"
+  protocol                 = "-1"
+  from_port                = 0
+  to_port                  = 0
+  security_group_id        = module.eks.cluster_primary_security_group_id
+  source_security_group_id = module.eks.node_security_group_id
+}
+
+# --------------------------------------------------------------------------
 # GPU node group, separate from the main module so it can be destroyed
 # independently when not in use (cost control).
 # --------------------------------------------------------------------------
