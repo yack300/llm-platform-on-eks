@@ -12,6 +12,12 @@ spec:
   # No replicas field: KEDA (keda-scaledobject.yaml) owns the replica count,
   # including 0. A fixed value here would make Argo CD's self-heal undo every
   # scale-down.
+  # Recreate, not RollingUpdate: each replica holds a whole GPU, so a rolling
+  # update's surge pod stays Pending while the old pod keeps the only GPU, and
+  # the rollout deadlocks (found on the first EKS run). Updates cost a short
+  # gap, covered by LiteLLM's fallback.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: vllm-inference
