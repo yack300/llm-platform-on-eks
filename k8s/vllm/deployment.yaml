@@ -63,18 +63,31 @@ spec:
               nvidia.com/gpu: 1
               cpu: "2"
               memory: 8Gi
+          # A cold start downloads ~4 GB of weights from Hugging Face and loads
+          # them into the GPU before /health answers, which takes minutes. With
+          # only a liveness probe (90s delay) the kubelet killed vLLM mid-
+          # download on the first EKS run. The startup probe gives it up to
+          # 20 minutes; liveness/readiness only start once it has passed.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 120 # 20 minutes
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 60
             periodSeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 90
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
