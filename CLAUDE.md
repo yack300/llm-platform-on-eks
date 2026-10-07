@@ -143,7 +143,10 @@ from LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads
 `vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A
 vLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.
 Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,
-which doesn't count requests that failed because the backend was down. While vLLM
+which doesn't count requests that failed because the backend was down. The query
+also can't be a plain `increase()`: LiteLLM creates the series on its first request
+already at 1, so `increase()` reads 0 for the very first request after LiteLLM starts
+(the query falls back to the raw value for series younger than the window). While vLLM
 cold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0
 also needs a GPU node: Terraform gives the Cluster Autoscaler its IAM role (EKS Pod
 Identity, service account `kube-system/cluster-autoscaler`) and tags the GPU ASG with

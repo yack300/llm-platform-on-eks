@@ -39,7 +39,17 @@ spec:
         # Every attempt LiteLLM routes to local-mistral in the last 5 minutes,
         # including the ones that fail because vLLM is at 0 (the proxy-level
         # litellm_proxy_total_requests_metric doesn't count those).
-        query: sum(increase(litellm_deployment_total_requests_total{requested_model="local-mistral"}[5m])) or vector(0)
+        # LiteLLM only creates this counter series on its first request,
+        # already at 1, and increase() of a series with no earlier sample is
+        # 0, so a plain increase() never sees the first request after LiteLLM
+        # starts (found on the first EKS run). Series older than the window use
+        # increase(); brand-new ones count with their current value.
+        query: >-
+          sum(
+            (increase(litellm_deployment_total_requests_total{requested_model="local-mistral"}[5m])
+              and litellm_deployment_total_requests_total{requested_model="local-mistral"} offset 5m)
+            or litellm_deployment_total_requests_total{requested_model="local-mistral"}
+          ) or vector(0)
         activationThreshold: "0"  # any request activates (wakes from 0)
         # Scale-out is left to vllm-queue: ~2 req/s per replica is higher than
         # this trigger should ever need to push on its own.
