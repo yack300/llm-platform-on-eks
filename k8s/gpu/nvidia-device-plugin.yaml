@@ -22,8 +22,19 @@ spec:
       labels:
         name: nvidia-device-plugin-ds
     spec:
-      # Only scheduled on the GPU node group's nodes (same taint defined
-      # in terraform/modules/eks-gpu-nodegroup/main.tf)
+      # The toleration only ALLOWS running on the tainted GPU nodes; the
+      # affinity is what keeps the plugin off the platform nodes, where it
+      # can't load the NVIDIA libraries and crash-loops (blocking Argo CD's
+      # sync waves). The node group name is fixed in
+      # terraform/modules/eks-gpu-nodegroup/main.tf (node_group_name).
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: eks.amazonaws.com/nodegroup
+                    operator: In
+                    values: ["gpu-inference"]
       tolerations:
         - key: "nvidia.com/gpu"
           operator: "Equal"
