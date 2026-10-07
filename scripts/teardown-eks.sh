@@ -21,6 +21,14 @@ echo "==> Deleting the root Application (cascades to every child Application)...
 # then deletes the EBS volumes.
 kubectl -n argocd delete application root --ignore-not-found --timeout=15m
 
+echo "==> Deleting PVCs left behind by StatefulSets..."
+# Deleting a StatefulSet never deletes its volumeClaimTemplates PVCs (by
+# design, to protect data), and Argo CD doesn't own them either: the
+# StatefulSet controller created them. Qdrant's PVC survived the app deletion
+# on the first EKS run.
+kubectl delete pvc --all -n llm-platform --ignore-not-found --timeout=5m
+kubectl delete pvc --all -n monitoring --ignore-not-found --timeout=5m
+
 echo "==> Waiting for PersistentVolumes to be released..."
 for _ in $(seq 1 60); do
   [ -z "$(kubectl get pv -o name 2>/dev/null)" ] && break
