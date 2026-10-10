@@ -25,6 +25,8 @@ through the LiteLLM gateway. Full numbers, method and caveats in
 - **Scale-to-zero, end to end:** request → KEDA 0→1 → Cluster Autoscaler adds
   a GPU node from 0 → first local response in ~8–9 min (mostly the 8.7 GB
   image pull). Idle, vLLM is back at 0 in ~5 min and the GPU node is gone in ~18 min.
+- **The whole validation session cost $1.48** (before tax): apply, benchmark,
+  scale-to-zero test and teardown, ~2 hours of cluster time.
 - **Same GPU, ~6.8x the throughput** going from 1 to 8 concurrent requests,
   with p50 latency only going from 2.5 s to 3 s (vLLM continuous batching).
 - **Bugs that only showed up on real infrastructure**, fixed in this repo:

@@ -66,6 +66,21 @@ are caching the vLLM image on the node (a custom AMI or a pre-pulled image)
 and keeping the model weights on a volume instead of downloading them on
 every start.
 
+## What the whole session cost
+
+The full AWS bill for the day (Cost Explorer), from `terraform apply` through
+the benchmark, the scale-to-zero test and the teardown, ~2 hours of cluster time:
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes + GPU node) | $0.61 |
+| EC2 other (EBS volumes) | $0.33 |
+| KMS (includes a key not created by this project) | $0.30 |
+| EKS control plane | $0.22 |
+| VPC (public IPv4 addresses) | $0.03 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$1.48** |
+
 ## Conclusion
 
 The cost per token depends almost entirely on utilization. The same GPU costs
