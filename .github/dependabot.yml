@@ -1,0 +1,28 @@
+# Versions in this repo are pinned on purpose; Dependabot opens PRs to bump
+# them, and CI validates each PR before anything reaches main (and Argo CD).
+# Not covered here: the scanner images in ci.yml's env:, container images in
+# k8s/ and Helm chart versions in k8s/argocd/apps/. Bump those by hand.
+version: 2
+updates:
+  # Actions are pinned by commit SHA; Dependabot updates the SHA and the
+  # version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+
+  # AWS provider and registry modules (terraform/ and terraform/bootstrap/
+  # have their own lock files).
+  - package-ecosystem: terraform
+    directories:
+      - /terraform
+      - /terraform/bootstrap
+    schedule:
+      interval: monthly
+    groups:
+      terraform:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore(terraform)
