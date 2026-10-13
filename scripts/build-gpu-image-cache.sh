@@ -47,8 +47,9 @@ cleanup() {
   fi
   aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME" 2>/dev/null || true
   aws iam delete-instance-profile --instance-profile-name "$ROLE_NAME" 2>/dev/null || true
-  aws iam detach-role-policy --role-name "$ROLE_NAME" \
-    --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 2>/dev/null || true
+  for policy in AmazonSSMManagedInstanceCore AmazonEKSWorkerNodePolicy; do
+    aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "arn:aws:iam::aws:policy/$policy" 2>/dev/null || true
+  done
   aws iam delete-role --role-name "$ROLE_NAME" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -63,8 +64,12 @@ aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{
   "Version": "2012-10-17",
   "Statement": [{"Effect": "Allow", "Principal": {"Service": "ec2.amazonaws.com"}, "Action": "sts:AssumeRole"}]
 }' >/dev/null
-aws iam attach-role-policy --role-name "$ROLE_NAME" \
-  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+# SSM for the commands below; the EKS worker policy because Bottlerocket's
+# Kubernetes variants call ec2:DescribeInstances at boot (pluto) and never
+# finish booting, or start the SSM agent, without it (found on the first run).
+for policy in AmazonSSMManagedInstanceCore AmazonEKSWorkerNodePolicy; do
+  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "arn:aws:iam::aws:policy/$policy"
+done
 aws iam create-instance-profile --instance-profile-name "$ROLE_NAME" >/dev/null
 aws iam add-role-to-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"
 sleep 15 # a new instance profile isn't usable by EC2 right away
@@ -72,8 +77,11 @@ sleep 15 # a new instance profile isn't usable by EC2 right away
 # Default VPC subnets give the instance a public IP, so it reaches SSM and
 # Docker Hub without a NAT Gateway (same as the cluster nodes).
 VPC_ID=$(aws_ ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+# Not every AZ offers every instance type (m5.large isn't in us-east-1e).
+AZS=$(aws_ ec2 describe-instance-type-offerings --location-type availability-zone \
+  --filters "Name=instance-type,Values=$INSTANCE_TYPE" --query 'InstanceTypeOfferings[].Location' --output text | tr '\t' ',')
 SUBNET_ID=$(aws_ ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" Name=default-for-az,Values=true \
-  --query 'Subnets[0].SubnetId' --output text)
+  "Name=availability-zone,Values=$AZS" --query 'Subnets[0].SubnetId' --output text)
 
 # The admin container gives SSM commands a root shell on the host (sheltie).
 # AWS CLI v2 base64-encodes --user-data itself, so it's passed as plain TOML.
