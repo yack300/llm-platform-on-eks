@@ -13,3 +13,4 @@ terraform/backend.hcl
 
 # Claude Code local settings (machine-specific, not project config)
 .claude/settings.local.json
+__pycache__/
