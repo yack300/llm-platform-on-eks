@@ -33,9 +33,10 @@ cd terraform/bootstrap && terraform init && terraform apply
 # Main infra (EKS cluster + node groups) — real AWS, real cost
 cd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=["<ip>/32"]'
 
-# Optional, before apply: EBS snapshot with the vLLM image pre-pulled, so GPU nodes
-# skip the ~8.7 GB pull on a cold start (-var='gpu_image_cache_snapshot_id=snap-...').
-# Not managed by Terraform: rebuild it when the vLLM tag changes, delete it when done.
+# Experimental, off by default: EBS snapshot with the vLLM image pre-pulled for the GPU
+# nodes' data volume (-var='gpu_image_cache_snapshot_id=snap-...'). Measured slower than
+# pulling with managed node groups (docs/cost-comparison.md, second run). Not managed by
+# Terraform: delete it when done.
 ./scripts/build-gpu-image-cache.sh
 
 # Hand the cluster to Argo CD (installs it, creates the LiteLLM secret, applies root.yaml)
@@ -165,8 +166,8 @@ also needs a GPU node: Terraform gives the Cluster Autoscaler its IAM role (EKS 
 Identity, service account `kube-system/cluster-autoscaler`) and tags the GPU ASG with
 `node-template` resources/taints so it can scale that group up from 0. The
 autoscaler itself is deployed in-cluster (by Argo CD); until then the vLLM pod stays
-Pending. GPU nodes are Bottlerocket so their containerd data volume can come from the
-image cache snapshot; without it, most of the ~8-minute cold start is the image pull. `keda-scaledobject-local.yaml`
+Pending. A cold start takes ~10 minutes, split between the vLLM image pull and vLLM's
+own startup (docs/cost-comparison.md). `keda-scaledobject-local.yaml`
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
 

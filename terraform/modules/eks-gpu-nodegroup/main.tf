@@ -11,8 +11,9 @@
 # Bottlerocket also splits the OS volume (/dev/xvda) from the data volume
 # (/dev/xvdb) that holds containerd's image store, so the data volume can be
 # created from an EBS snapshot with the vLLM image already pulled (see
-# scripts/build-gpu-image-cache.sh). That turns the image pull, the biggest
-# part of a cold start, into reading a local disk.
+# scripts/build-gpu-image-cache.sh). Off by default: with a managed node
+# group it measured slower than pulling the image (docs/cost-comparison.md,
+# second run).
 # --------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "eks_node_assume_role" {

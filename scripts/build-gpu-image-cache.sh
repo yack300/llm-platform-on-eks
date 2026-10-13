@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Builds an EBS snapshot of a Bottlerocket data volume with the vLLM image
 # already pulled, for the GPU nodes' data volume
-# (terraform: -var gpu_image_cache_snapshot_id=<snapshot>). On a cold start
-# the node then reads the image from its own disk instead of pulling ~8.7 GB
-# from Docker Hub, which was over half of the first run's ~8-minute wake-up.
+# (terraform: -var gpu_image_cache_snapshot_id=<snapshot>), so a cold start
+# reads the image from its own disk instead of pulling ~8.7 GB from Docker
+# Hub. Experimental: with EKS managed node groups the restored volume loads
+# lazily from S3 and the cold start got slower, not faster
+# (docs/cost-comparison.md, second run).
 #
 # How: launch a temporary Bottlerocket instance (same release as the GPU
 # nodes, standard variant: pulling images needs no GPU), pull the image into
