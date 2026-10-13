@@ -80,13 +80,22 @@ variable "data_volume_snapshot_id" {
   default     = null
 }
 
+variable "data_volume_initialization_rate" {
+  description = "MiB/s (100-300) at which EBS copies the snapshot onto a new data volume, only used with data_volume_snapshot_id. Billed per GiB of snapshot data on every volume created."
+  type        = number
+  default     = 300
+}
+
 resource "aws_launch_template" "gpu" {
   name_prefix            = "${var.cluster_name}-gpu-"
   update_default_version = true
 
   # Only the data volume is overridden; the OS volume (/dev/xvda) keeps the
-  # AMI's default. Volumes restored from a snapshot load their blocks lazily
-  # from S3 on first read, which the cold start measurements include.
+  # AMI's default. A volume restored from a snapshot otherwise loads each
+  # block from S3 on first read: on the second EKS run that made vLLM's
+  # startup ~3x slower and the whole cold start slower than pulling the
+  # image (~14.5 vs ~10 min). A provisioned initialization rate copies the
+  # whole snapshot (~30 GiB) in ~100 s instead, for ~$0.0036/GiB per volume.
   block_device_mappings {
     device_name = "/dev/xvdb"
 
@@ -96,6 +105,8 @@ resource "aws_launch_template" "gpu" {
       encrypted             = true
       delete_on_termination = true
       snapshot_id           = var.data_volume_snapshot_id
+      # AWS rejects a rate on a volume that isn't created from a snapshot.
+      volume_initialization_rate = var.data_volume_snapshot_id != null ? var.data_volume_initialization_rate : null
     }
   }
 
