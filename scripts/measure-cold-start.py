@@ -27,6 +27,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from benchmark import master_key  # noqa: E402
@@ -64,13 +65,21 @@ def chat(url: str, key: str, model: str, disable_fallbacks: bool):
         f"{url}/chat/completions", data=json.dumps(body).encode(), method="POST",
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
     )
+    # Timestamps come from the gateway's Date header, not this machine's
+    # clock, so they line up with the cluster's own timestamps (a laptop
+    # clock a few seconds off put the first answer before pod Ready).
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            return resp.status, json.loads(resp.read()).get("model")
+            return resp.status, json.loads(resp.read()).get("model"), server_time(resp.headers)
     except urllib.error.HTTPError as e:
-        return e.code, None
+        return e.code, None, server_time(e.headers)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-        return None, str(e)
+        return None, str(e), datetime.now(timezone.utc)
+
+
+def server_time(headers) -> datetime:
+    date = headers.get("Date") if headers else None
+    return parsedate_to_datetime(date) if date else datetime.now(timezone.utc)
 
 
 def main():
@@ -88,8 +97,7 @@ def main():
                  "Wait for scale-to-zero (vLLM ~5 min, GPU node ~18 min idle) or pass --force.")
 
     key = master_key()
-    t0 = datetime.now(timezone.utc)
-    status, served_by = chat(args.url, key, args.model, disable_fallbacks=False)
+    status, served_by, t0 = chat(args.url, key, args.model, disable_fallbacks=False)
     print(f"{t0:%H:%M:%S} wake-up request sent: HTTP {status}, answered by {served_by}")
 
     deadline = time.monotonic() + args.timeout_min * 60
@@ -101,7 +109,7 @@ def main():
         if pod and condition(pod, "Ready"):
             break
         if time.monotonic() - last_report > 30:
-            elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - t0).total_seconds()  # progress only
             state = pod["status"].get("phase") if pod else "no pod yet"
             print(f"  +{elapsed:5.0f}s  vLLM pod: {state}", flush=True)
             last_report = time.monotonic()
@@ -112,11 +120,10 @@ def main():
     # LiteLLM may still have the deployment in cooldown after the failed
     # attempts; retry until vLLM itself answers.
     while time.monotonic() < deadline:
-        status, served_by = chat(args.url, key, args.model, disable_fallbacks=True)
+        status, served_by, t_answer = chat(args.url, key, args.model, disable_fallbacks=True)
         if status == 200:
             break
         time.sleep(2)
-    t_answer = datetime.now(timezone.utc)
 
     name = pod["metadata"]["name"]
     node = kubectl_json("get", "node", pod["spec"]["nodeName"])
