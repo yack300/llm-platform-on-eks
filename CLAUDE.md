@@ -148,12 +148,14 @@ what feeds `docs/cost-comparison.md`. OpenCost (infra-side cost) is not installe
 anywhere yet — it only appears as a documented next step in the comments at the end
 of `prometheus-grafana-values.yaml`.
 
-**Scale-to-zero spans three layers.** The ScaledObject has two triggers:
+**Scale-to-zero spans three layers.** The ScaledObject has three triggers:
 `gateway-demand` reads `litellm_deployment_total_requests_total{requested_model="local-mistral"}`
 from LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads
 `vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A
 vLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.
-Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,
+A third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod
+isn't Ready yet, for up to 20 minutes: otherwise gateway-demand expires ~7 minutes after
+the last request and KEDA kills a slower cold start mid-load. Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,
 which doesn't count requests that failed because the backend was down. The query
 also can't be a plain `increase()`: LiteLLM creates the series on its first request
 already at 1, so `increase()` reads 0 for the very first request after LiteLLM starts

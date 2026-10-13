@@ -39,3 +39,24 @@ spec:
         serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
         query: sum(vllm:num_requests_waiting) or vector(0)
         threshold: "5"
+    # Keeps the replica while its pod is still starting. gateway-demand goes
+    # inactive 5 minutes after the last request and KEDA scales to 0 after
+    # cooldownPeriod, ~7 minutes in total, but a cold start without the image
+    # cache takes longer: on the second EKS run KEDA killed vLLM 30 seconds
+    # into loading the model. Counts pods created in the last 20 minutes
+    # (the startupProbe's budget) that aren't Ready yet, so a pod that never
+    # becomes Ready can't hold the GPU forever. Uses kube-state-metrics,
+    # which kube-prometheus-stack already runs.
+    - type: prometheus
+      name: startup-in-progress
+      metadata:
+        serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        query: >-
+          count(
+            (time() - kube_pod_created{namespace="llm-platform", pod=~"local-llm-mock-.*"}) < 1200
+            unless on(pod)
+            (kube_pod_status_ready{namespace="llm-platform", pod=~"local-llm-mock-.*", condition="true"} == 1)
+          ) or vector(0)
+        activationThreshold: "0"
+        # Never asks for more than the one replica that's starting.
+        threshold: "1"
