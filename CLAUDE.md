@@ -33,8 +33,17 @@ cd terraform/bootstrap && terraform init && terraform apply
 # Main infra (EKS cluster + node groups) — real AWS, real cost
 cd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=["<ip>/32"]'
 
+# Optional, before apply: EBS snapshot with the vLLM image pre-pulled, so GPU nodes
+# skip the ~8.7 GB pull on a cold start (-var='gpu_image_cache_snapshot_id=snap-...').
+# Not managed by Terraform: rebuild it when the vLLM tag changes, delete it when done.
+./scripts/build-gpu-image-cache.sh
+
 # Hand the cluster to Argo CD (installs it, creates the LiteLLM secret, applies root.yaml)
 ./scripts/bootstrap-argocd.sh            # ANTHROPIC_API_KEY=... optional, for claude-fallback
+
+# Measurements (stdlib Python, need: kubectl -n llm-platform port-forward svc/litellm-gateway 4000:4000)
+./scripts/measure-cold-start.py          # from vLLM + GPU nodes at 0 to the first vLLM answer
+./scripts/benchmark.py --json out.json   # TTFT, latency, tokens/s at concurrency 1,4,8
 
 # Teardown: ALWAYS before terraform destroy (deletes PVC-backed EBS volumes)
 ./scripts/teardown-eks.sh
@@ -45,7 +54,7 @@ docker run --rm -v "$PWD":/repo -w /repo bridgecrew/checkov:3.3.20 -d terraform/
 docker run --rm -v "$PWD":/repo -w /repo aquasec/trivy:0.74.0 fs --severity CRITICAL,HIGH --exit-code 1 .
 docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/4c8dc296d32b06d15ccde9668ff136c951f4d539/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.36.0 k8s/
-docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
@@ -74,10 +83,12 @@ or it will be rejected both in CI and at admission time.
 
 **Terraform vs. Argo CD split is load-bearing.** Terraform only ever provisions AWS
 resources (EKS cluster/node groups, add-ons, IAM/Pod Identity, S3 for state).
-Everything that runs *inside* the cluster — including cluster add-ons like the NVIDIA
-device plugin and the Cluster Autoscaler — is deployed by Argo CD from this repo, not
-by a Terraform `helm_release`/`kubernetes_*` resource. When adding a new workload,
-follow this split rather than mixing the two.
+Everything that runs *inside* the cluster — including cluster add-ons like the Cluster
+Autoscaler — is deployed by Argo CD from this repo, not by a Terraform
+`helm_release`/`kubernetes_*` resource. When adding a new workload, follow this split
+rather than mixing the two. The one exception is the NVIDIA device plugin: GPU nodes run
+Bottlerocket's NVIDIA variant, which ships it as a host service, so there's no
+DaemonSet to deploy (and adding one would conflict with it).
 
 **Argo CD layout (`k8s/argocd/`).** `scripts/bootstrap-argocd.sh` is the only
 imperative step on EKS: it installs Argo CD (`install/argocd-values.yaml`), creates the
@@ -152,7 +163,8 @@ also needs a GPU node: Terraform gives the Cluster Autoscaler its IAM role (EKS 
 Identity, service account `kube-system/cluster-autoscaler`) and tags the GPU ASG with
 `node-template` resources/taints so it can scale that group up from 0. The
 autoscaler itself is deployed in-cluster (by Argo CD); until then the vLLM pod stays
-Pending. `keda-scaledobject-local.yaml`
+Pending. GPU nodes are Bottlerocket so their containerd data volume can come from the
+image cache snapshot; without it, most of the ~8-minute cold start is the image pull. `keda-scaledobject-local.yaml`
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
 
