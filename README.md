@@ -75,7 +75,7 @@ llm-platform-on-eks/
 ├── terraform/
 │   ├── bootstrap/            # One-time bootstrap: S3 bucket for remote state (native S3 locking)
 │   ├── modules/
-│   │   └── eks-gpu-nodegroup/  # GPU node group: IAM role, taint, spot capacity_type
+│   │   └── eks-gpu-nodegroup/  # GPU node group: Bottlerocket NVIDIA, taint, spot, optional image cache snapshot
 │   ├── main.tf                # EKS cluster (official module) + base node group + GPU node group
 │   └── backend.hcl.example    # S3 backend template (copy to backend.hcl, gitignored)
 ├── k8s/
@@ -84,7 +84,6 @@ llm-platform-on-eks/
 │   ├── qdrant/                  # Vector DB for RAG (Helm values)
 │   ├── argocd/                 # Argo CD: install values, root app-of-apps, one Application per component
 │   ├── storage/                # Default gp3 StorageClass (EKS ships none)
-│   ├── gpu/                     # NVIDIA device plugin DaemonSet
 │   ├── security/                # Kyverno policies + Trivy-operator config
 │   └── observability/         # kube-prometheus-stack values + ServiceMonitors (cost/latency)
 ├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform

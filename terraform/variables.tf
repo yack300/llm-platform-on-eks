@@ -56,6 +56,12 @@ variable "use_spot_gpu_nodes" {
   default     = true
 }
 
+variable "gpu_image_cache_snapshot_id" {
+  description = "EBS snapshot with the vLLM image pre-pulled, used as the GPU nodes' data volume (build it with scripts/build-gpu-image-cache.sh). null = pull the image on every cold start."
+  type        = string
+  default     = null
+}
+
 variable "gpu_nodes_desired" {
   description = "Initial number of GPU nodes. Keep at 0: after creation the Cluster Autoscaler adds a node when a vLLM pod is Pending and removes it when idle (Terraform ignores later changes)."
   type        = number

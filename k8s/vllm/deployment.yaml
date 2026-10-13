@@ -58,7 +58,7 @@ spec:
             allowPrivilegeEscalation: false
             privileged: false
           # Sized for the default g4dn.xlarge (4 vCPU, 16 GiB), leaving headroom
-          # for system DaemonSets (aws-node, kube-proxy, nvidia-device-plugin).
+          # for system DaemonSets (aws-node, kube-proxy, eks-pod-identity-agent).
           # CPU/memory limits are required by require-resource-limits.yaml.
           resources:
             limits:

@@ -87,7 +87,7 @@ jobs:
       - run: >-
           docker run --rm -v "$PWD":/repo -w /repo "$KYVERNO_IMAGE"
           apply k8s/security/kyverno-policies/
-          --resource k8s/vllm/ --resource k8s/litellm/ --resource k8s/gpu/
+          --resource k8s/vllm/ --resource k8s/litellm/
 
   terraform:
     needs: [checkov, trivy-fs, gitleaks]

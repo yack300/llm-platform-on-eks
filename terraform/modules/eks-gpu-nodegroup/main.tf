@@ -1,14 +1,18 @@
 # --------------------------------------------------------------------------
 # Module: EKS GPU node group
 #
-# The NVIDIA device plugin (DaemonSet) is NOT installed here via Terraform:
-# it's deployed as a manifest in k8s/gpu/nvidia-device-plugin.yaml,
-# synced by Argo CD, following the same pattern as the rest of the repo
-# (Terraform = AWS infra, Argo CD = cluster workloads). See that file for the
-# toleration to the nvidia.com/gpu=present:NoSchedule taint defined below.
+# Nodes run Bottlerocket's NVIDIA variant, which ships the NVIDIA driver and
+# runs the NVIDIA device plugin as a host service: nodes advertise
+# nvidia.com/gpu with no DaemonSet in the cluster. Keep the device plugin on
+# its default CDI strategy: Bottlerocket 1.66.0 doesn't mount the driver
+# libraries into containers with the `envvar` strategy
+# (bottlerocket-os/bottlerocket#4950).
 #
-# Alternative if more complete management is needed in the future (drivers,
-# container toolkit, DCGM exporter): NVIDIA GPU Operator, also via Argo CD.
+# Bottlerocket also splits the OS volume (/dev/xvda) from the data volume
+# (/dev/xvdb) that holds containerd's image store, so the data volume can be
+# created from an EBS snapshot with the vLLM image already pulled (see
+# scripts/build-gpu-image-cache.sh). That turns the image pull, the biggest
+# part of a cold start, into reading a local disk.
 # --------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "eks_node_assume_role" {
@@ -65,9 +69,50 @@ variable "desired_size" {
 }
 
 variable "disk_size" {
-  description = "Root volume size (GiB) for GPU nodes. The vLLM image alone unpacks to well over the 20 GiB default, plus the model weights and Hugging Face cache."
+  description = "Data volume size (GiB) for GPU nodes (containerd images and the Hugging Face cache). The vLLM image alone unpacks to well over 20 GiB. Must be at least the size of the image cache snapshot."
   type        = number
   default     = 100
+}
+
+variable "data_volume_snapshot_id" {
+  description = "EBS snapshot to create the data volume from, with the vLLM image already pulled (scripts/build-gpu-image-cache.sh). null = empty volume, images are pulled at startup."
+  type        = string
+  default     = null
+}
+
+resource "aws_launch_template" "gpu" {
+  name_prefix            = "${var.cluster_name}-gpu-"
+  update_default_version = true
+
+  # Only the data volume is overridden; the OS volume (/dev/xvda) keeps the
+  # AMI's default. Volumes restored from a snapshot load their blocks lazily
+  # from S3 on first read, which the cold start measurements include.
+  block_device_mappings {
+    device_name = "/dev/xvdb"
+
+    ebs {
+      volume_size           = var.disk_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+      snapshot_id           = var.data_volume_snapshot_id
+    }
+  }
+
+  # IMDSv2 only, and unreachable from pods (hop limit 1): nothing on these
+  # nodes needs it, workloads get AWS access through EKS Pod Identity.
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "${var.cluster_name}-gpu-inference"
+    }
+  }
 }
 
 resource "aws_eks_node_group" "gpu" {
@@ -76,18 +121,20 @@ resource "aws_eks_node_group" "gpu" {
   node_role_arn   = aws_iam_role.gpu_node.arn
   subnet_ids      = var.subnet_ids
 
-  # EKS-optimized Amazon Linux 2023 AMI with NVIDIA drivers and container
-  # toolkit preinstalled (Amazon Linux 2 AMIs aren't published for current
-  # Kubernetes versions).
-  ami_type = "AL2023_x86_64_NVIDIA"
+  # EKS picks the latest Bottlerocket NVIDIA AMI for the cluster version
+  # (the launch template sets no image_id).
+  ami_type = "BOTTLEROCKET_x86_64_NVIDIA"
 
   capacity_type  = var.use_spot ? "SPOT" : "ON_DEMAND"
   instance_types = [var.instance_type]
 
-  # With the 20 GiB default the vLLM image pull filled the disk: the kubelet
-  # evicted the pod on DiskPressure and tainted the node (found on the first
-  # EKS run).
-  disk_size = var.disk_size
+  # Disk size lives in the launch template. With the 20 GiB default the
+  # vLLM image pull filled the disk: the kubelet evicted the pod on
+  # DiskPressure and tainted the node (found on the first EKS run).
+  launch_template {
+    id      = aws_launch_template.gpu.id
+    version = aws_launch_template.gpu.latest_version
+  }
 
   scaling_config {
     desired_size = var.desired_size

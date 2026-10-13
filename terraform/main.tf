@@ -225,6 +225,8 @@ module "gpu_nodegroup" {
   use_spot      = var.use_spot_gpu_nodes
   desired_size  = var.gpu_nodes_desired
 
+  data_volume_snapshot_id = var.gpu_image_cache_snapshot_id
+
   # Node groups need the cluster's networking/identity add-ons in place
   # before nodes can join.
   depends_on = [module.eks]
