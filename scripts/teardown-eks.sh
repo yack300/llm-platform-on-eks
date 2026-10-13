@@ -51,3 +51,15 @@ if [ -n "$volumes" ]; then
 fi
 
 echo "No PVC-backed EBS volumes left. Safe to run terraform destroy."
+
+# The GPU image cache snapshot (scripts/build-gpu-image-cache.sh) isn't
+# managed by Terraform and survives the destroy on purpose, so the next run
+# can reuse it; it bills ~$0.05/GB-month until deleted.
+snapshots=$(aws ec2 describe-snapshots --region "$AWS_REGION" --owner-ids self \
+  --filters "Name=tag:llm-platform/purpose,Values=gpu-image-cache" \
+  --query 'Snapshots[].[SnapshotId,VolumeSize,StartTime]' --output text)
+if [ -n "$snapshots" ]; then
+  echo
+  echo "Note: GPU image cache snapshot(s) kept for the next run (delete with aws ec2 delete-snapshot --snapshot-id <id>):"
+  echo "$snapshots"
+fi
