@@ -40,9 +40,9 @@ running the platform: the EKS control plane ($0.10/h) and the spot platform
 nodes that run LiteLLM, Prometheus, Argo CD and the rest, which bill even
 when vLLM is scaled to zero.
 
-## Scale-to-zero, measured
+## Scale-to-zero, measured (first run)
 
-Waking from zero, with no GPU node running:
+Waking from zero, with no GPU node running (AL2023 GPU nodes):
 
 | Step | Time |
 |---|---|
@@ -65,6 +65,71 @@ The cold start is dominated by the image pull. The obvious next improvements
 are caching the vLLM image on the node (a custom AMI or a pre-pulled image)
 and keeping the model weights on a volume instead of downloading them on
 every start.
+
+## Second run (2026-10-13): trying to cut the cold start
+
+Goal: remove the image pull by creating the GPU nodes' data volume from an
+EBS snapshot with the vLLM image already pulled (Bottlerocket GPU nodes,
+`scripts/build-gpu-image-cache.sh`). Every number below comes from
+`scripts/measure-cold-start.py` with a single request, from zero vLLM pods
+and zero GPU nodes. Same cluster, same day, on-demand `g4dn.xlarge`.
+
+| | No cache (baseline) | Snapshot | Snapshot + 300 MiB/s init rate |
+|---|---|---|---|
+| Request → GPU node Ready | 1:31 | 1:42 | 1:48 |
+| Image pull | 4:24 | 0 (already on disk) | 0 (already on disk) |
+| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |
+| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |
+
+The snapshot made the cold start slower. A volume restored from a snapshot
+fetches each block from S3 the first time it's read, and vLLM reads
+thousands of PyTorch/CUDA files at startup: during the slow runs the
+container used under 0.6 CPU cores with no throttling, and the volume served
+only ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. After 15
+minutes the volume was 21% initialized.
+
+The fix should have been a provisioned volume initialization rate (the whole
+~30 GiB snapshot in ~100 s), but EKS managed node groups copy the launch
+template into their own and drop `VolumeInitializationRate`: ours had 300,
+the copy EKS launches from doesn't, so the third run behaved like the
+second. Fast snapshot restore would work but bills per hour per AZ even when
+nothing is restored (~$540/month per AZ), which defeats scale-to-zero.
+
+What would actually help, for a next run: nodes that honor the launch
+template as written (Karpenter or a self-managed node group) so the
+initialization rate applies, or pulling the image from ECR in the same region
+(pull-through cache) instead of Docker Hub. The snapshot variable stays in
+Terraform (`gpu_image_cache_snapshot_id`, default off) but isn't worth
+enabling with managed node groups.
+
+Other findings from this run:
+
+- **Bottlerocket GPU nodes join faster:** Ready ~15 s after the EC2 node
+  object appears, ~50 s after the scale-up, vs ~1.5 min for AL2023.
+- **vLLM's own startup is now ~4 min, not ~2:** vLLM v0.30 adds a
+  `torch.compile` step (~27 s warm, ~44 s on the cold disk) and captures
+  CUDA graphs twice. That's the next target after the image pull.
+- **KEDA was scaling vLLM to zero mid-startup** (fixed): with a single
+  request, the demand trigger expires after ~7 minutes, before a 10-minute
+  cold start finishes. A `startup-in-progress` trigger now holds the replica
+  while its pod isn't Ready, for up to 20 minutes.
+- **Spot interruption vs. persistent volumes:** a platform spot node was
+  replaced in a different AZ and Qdrant/Grafana stayed Pending, since their
+  EBS volumes can't follow them across AZs. Not fixed: stateful workloads
+  need a node group per AZ, or volumes that can be recreated.
+
+Warm performance (`scripts/benchmark.py`, streaming through LiteLLM,
+128 output tokens per request):
+
+| Concurrent requests | Output tokens/s | TTFT p50 | TTFT p95 | Latency p50 | Latency p95 |
+|---|---|---|---|---|---|
+| 1 | 47 | 0.31 s | 0.31 s | 2.74 s | 2.74 s |
+| 4 | 172 | 0.36 s | 0.42 s | 2.97 s | 3.02 s |
+| 8 | 310 | 0.41 s | 0.45 s | 3.26 s | 3.36 s |
+
+Throughput is ~9% below the first run's (342 tok/s at 8); the prompt,
+streaming and node differ between runs, so treat it as run-to-run noise
+rather than a regression.
 
 ## What the whole session cost
 
