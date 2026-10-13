@@ -36,6 +36,12 @@ VLLM_IMAGE=$(awk '/image: vllm\/vllm-openai:/ {print $2; exit}' k8s/vllm/deploym
 IMAGES="${IMAGES:-docker.io/$VLLM_IMAGE}"
 
 ROLE_NAME="${CLUSTER_NAME}-image-cache-builder"
+# Same policies as an EKS node, plus SSM for the commands below. Without
+# them Bottlerocket never finishes booting: its Kubernetes variants call
+# ec2:DescribeInstances at boot (pluto), and the control container, which
+# runs the SSM agent, is pulled from a private ECR repo (both found on the
+# first run).
+POLICIES="AmazonSSMManagedInstanceCore AmazonEKSWorkerNodePolicy AmazonEC2ContainerRegistryReadOnly"
 aws_() { aws --region "$AWS_REGION" "$@"; }
 
 INSTANCE_ID=""
@@ -47,7 +53,7 @@ cleanup() {
   fi
   aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME" 2>/dev/null || true
   aws iam delete-instance-profile --instance-profile-name "$ROLE_NAME" 2>/dev/null || true
-  for policy in AmazonSSMManagedInstanceCore AmazonEKSWorkerNodePolicy; do
+  for policy in $POLICIES; do
     aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "arn:aws:iam::aws:policy/$policy" 2>/dev/null || true
   done
   aws iam delete-role --role-name "$ROLE_NAME" 2>/dev/null || true
@@ -64,10 +70,7 @@ aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document '{
   "Version": "2012-10-17",
   "Statement": [{"Effect": "Allow", "Principal": {"Service": "ec2.amazonaws.com"}, "Action": "sts:AssumeRole"}]
 }' >/dev/null
-# SSM for the commands below; the EKS worker policy because Bottlerocket's
-# Kubernetes variants call ec2:DescribeInstances at boot (pluto) and never
-# finish booting, or start the SSM agent, without it (found on the first run).
-for policy in AmazonSSMManagedInstanceCore AmazonEKSWorkerNodePolicy; do
+for policy in $POLICIES; do
   aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "arn:aws:iam::aws:policy/$policy"
 done
 aws iam create-instance-profile --instance-profile-name "$ROLE_NAME" >/dev/null
