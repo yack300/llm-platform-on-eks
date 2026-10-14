@@ -30,14 +30,14 @@ infra bootstrap and CI validation:
 cd terraform/bootstrap && terraform init && terraform apply
 # copy the `backend_hcl` output into terraform/backend.hcl (see backend.hcl.example)
 
-# Main infra (EKS cluster + node groups) — real AWS, real cost
+# Main infra (EKS cluster, platform node group, Karpenter IAM/queue) — real AWS, real cost
 cd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=["<ip>/32"]'
 
-# Experimental, off by default: EBS snapshot with the vLLM image pre-pulled for the GPU
-# nodes' data volume (-var='gpu_image_cache_snapshot_id=snap-...'). Measured slower than
-# pulling with managed node groups (docs/cost-comparison.md, second run). Not managed by
-# Terraform: delete it when done.
+# Optional, experimental: EBS snapshot with the vLLM image pre-pulled for the GPU nodes'
+# data volume. Build it any time; point the gpu EC2NodeClass at it (or back to `off`)
+# once the cluster is up. Not managed by Terraform: delete it when done.
 ./scripts/build-gpu-image-cache.sh
+./scripts/set-gpu-image-cache.sh [snap-...|off]
 
 # Hand the cluster to Argo CD (installs it, creates the LiteLLM secret, applies root.yaml)
 ./scripts/bootstrap-argocd.sh            # ANTHROPIC_API_KEY=... optional, for claude-fallback
@@ -46,7 +46,7 @@ cd terraform && terraform init -backend-config=backend.hcl && terraform apply -v
 ./scripts/measure-cold-start.py          # from vLLM + GPU nodes at 0 to the first vLLM answer
 ./scripts/benchmark.py --json out.json   # TTFT, latency, tokens/s at concurrency 1,4,8
 
-# Teardown: ALWAYS before terraform destroy (deletes PVC-backed EBS volumes)
+# Teardown: ALWAYS before terraform destroy (removes Karpenter's nodes and PVC-backed EBS volumes)
 ./scripts/teardown-eks.sh
 
 # What CI runs (.github/workflows/ci.yml), with the same pinned images, useful to
@@ -63,7 +63,8 @@ docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 app
 # (single file: same docker command, with a file path instead of k8s/)
 ```
 
-CRD resources (Argo CD Application, ScaledObject, ServiceMonitor, ClusterPolicy) are
+CRD resources (Argo CD Application, ScaledObject, ServiceMonitor, ClusterPolicy,
+Karpenter NodePool/EC2NodeClass) are
 validated against the community datreeio/CRDs-catalog schemas, pinned to a commit in
 the workflow's `CRD_SCHEMAS`. There's deliberately no `-ignore-missing-schemas`: a new
 CRD kind without a schema in that catalog fails CI instead of being skipped silently.
@@ -83,9 +84,10 @@ or it will be rejected both in CI and at admission time.
 ## Architecture notes that span multiple files
 
 **Terraform vs. Argo CD split is load-bearing.** Terraform only ever provisions AWS
-resources (EKS cluster/node groups, add-ons, IAM/Pod Identity, S3 for state).
-Everything that runs *inside* the cluster — including cluster add-ons like the Cluster
-Autoscaler — is deployed by Argo CD from this repo, not by a Terraform
+resources (EKS cluster, the fixed platform node group, add-ons, IAM/Pod Identity,
+Karpenter's IAM roles and interruption queue, S3 for state). Everything that runs
+*inside* the cluster — including Karpenter itself and its NodePools — is deployed by
+Argo CD from this repo, not by a Terraform
 `helm_release`/`kubernetes_*` resource. When adding a new workload, follow this split
 rather than mixing the two. The one exception is the NVIDIA device plugin: GPU nodes run
 Bottlerocket's NVIDIA variant, which ships it as a host service, so there's no
@@ -106,12 +108,27 @@ still installs the same components with `helm upgrade --install` for kind, witho
 Argo CD (memory).
 
 **Things on EKS that only exist for EKS:** the gp3 default StorageClass
-(`k8s/storage/`, EKS ships none), the EBS CSI driver and Cluster Autoscaler IAM
-(Terraform), control plane ServiceMonitors disabled in the Prometheus values. vLLM's
+(`k8s/storage/`, EKS ships none), the EBS CSI driver and Karpenter (IAM in Terraform,
+controller and `k8s/karpenter/` NodePools via Argo CD), control plane ServiceMonitors
+disabled in the Prometheus values. vLLM's
 Deployment has no `replicas` and its Application ignores `/spec/replicas`, because KEDA
 owns the count; adding `replicas` back would make self-heal undo every scale-to-zero.
 Teardown must go through `scripts/teardown-eks.sh` before `terraform destroy`:
-destroying with PVCs still present orphans their EBS volumes, which keep billing.
+Karpenter's instances aren't Terraform resources, so the script deletes the NodePools
+first (with root's auto-sync off, or Argo CD recreates them) and waits for the nodes
+to go while Karpenter still runs; destroying with PVCs still present orphans their EBS
+volumes. Both keep billing.
+
+**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back
+to on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`
+(overflow for platform pods beyond the fixed 2-node managed node group, which runs
+Karpenter itself). EC2NodeClasses find subnets and the node security group by the
+`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed
+name; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache
+(`snapshotID` + `volumeInitializationRate`) is set in-cluster by
+`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),
+because the snapshot is per account. Karpenter's Helm chart comes from an OCI registry
+registered in `argocd-values.yaml`.
 
 **Two parallel LiteLLM/vLLM configs — real GPU vs. local mock.** Because vLLM requires
 a real GPU, there are two versions of the inference backend that LiteLLM points to,
@@ -162,11 +179,8 @@ also can't be a plain `increase()`: LiteLLM creates the series on its first requ
 already at 1, so `increase()` reads 0 for the very first request after LiteLLM starts
 (the query falls back to the raw value for series younger than the window). While vLLM
 cold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0
-also needs a GPU node: Terraform gives the Cluster Autoscaler its IAM role (EKS Pod
-Identity, service account `kube-system/cluster-autoscaler`) and tags the GPU ASG with
-`node-template` resources/taints so it can scale that group up from 0. The
-autoscaler itself is deployed in-cluster (by Argo CD); until then the vLLM pod stays
-Pending. A cold start takes ~10 minutes, split between the vLLM image pull and vLLM's
+also needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`
+NodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10 minutes, split between the vLLM image pull and vLLM's
 own startup (docs/cost-comparison.md). `keda-scaledobject-local.yaml`
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
@@ -179,10 +193,9 @@ application code is ever added to this repo (e.g. the RAG ingestion pipeline, wh
 today explicitly lives outside this repo per the comment in
 `k8s/qdrant/helm-values.yaml`), build/push stages would need to come back.
 
-**Cost control is a running theme, not just a comment.** `gpu_nodes_desired` defaults
-to `0` (`terraform/variables.tf`; afterwards the Cluster Autoscaler owns the count and
-Terraform ignores it), GPU and platform node groups use spot capacity, the default VPC
-avoids a NAT Gateway,
+**Cost control is a running theme, not just a comment.** There are no GPU nodes while
+vLLM is idle (Karpenter removes them once empty), NodePools cap GPUs and extra CPUs with
+`limits`, GPU and platform capacity prefers spot, the default VPC avoids a NAT Gateway,
 and KEDA's `minReplicaCount: 0` scales vLLM to zero when idle. Don't change these
 defaults without a reason — the whole point of the project is demonstrating
 cost-aware AI infra.

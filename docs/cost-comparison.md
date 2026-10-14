@@ -98,9 +98,9 @@ nothing is restored (~$540/month per AZ), which defeats scale-to-zero.
 What would actually help, for a next run: nodes that honor the launch
 template as written (Karpenter or a self-managed node group) so the
 initialization rate applies, or pulling the image from ECR in the same region
-(pull-through cache) instead of Docker Hub. The snapshot variable stays in
-Terraform (`gpu_image_cache_snapshot_id`, default off) but isn't worth
-enabling with managed node groups.
+(pull-through cache) instead of Docker Hub. The repo went with the first:
+GPU nodes now come from Karpenter (`k8s/karpenter/`), which also falls back
+from spot to on-demand and launches nodes in the AZ of a pod's volume.
 
 Other findings from this run:
 
