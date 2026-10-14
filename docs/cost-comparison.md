@@ -131,6 +131,19 @@ Throughput is ~9% below the first run's (342 tok/s at 8); the prompt,
 streaming and node differ between runs, so treat it as run-to-run noise
 rather than a regression.
 
+What this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold
+starts, the snapshot builds and the teardown):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU node, snapshot builder) | $0.91 |
+| EKS control plane | $0.24 |
+| EC2 other (EBS volumes and the snapshot) | $0.20 |
+| KMS (includes a key not created by this project) | $0.06 |
+| VPC (public IPv4 addresses) | $0.04 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$1.45** |
+
 ## What the whole session cost
 
 The full AWS bill for the day (Cost Explorer), from `terraform apply` through
