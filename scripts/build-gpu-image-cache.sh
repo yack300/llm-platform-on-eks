@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Builds an EBS snapshot of a Bottlerocket data volume with the vLLM image
 # already pulled, for the GPU nodes' data volume
-# (terraform: -var gpu_image_cache_snapshot_id=<snapshot>), so a cold start
-# reads the image from its own disk instead of pulling ~8.7 GB from Docker
-# Hub. Experimental: with EKS managed node groups the restored volume loads
-# lazily from S3 and the cold start got slower, not faster
-# (docs/cost-comparison.md, second run).
+# (scripts/set-gpu-image-cache.sh), so a cold start reads the image from its
+# own disk instead of pulling ~8.7 GB from Docker Hub. Only worth it with a
+# provisioned initialization rate, which Karpenter passes to EC2 and EKS
+# managed node groups don't: restored lazily from S3, the cold start got
+# slower, not faster (docs/cost-comparison.md, second run).
 #
 # How: launch a temporary Bottlerocket instance (same release as the GPU
 # nodes, standard variant: pulling images needs no GPU), pull the image into
@@ -28,7 +28,7 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 CLUSTER_NAME="${CLUSTER_NAME:-llm-platform-demo}"
 K8S_VERSION="${K8S_VERSION:-1.36}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-m5.large}"
-# Same size as the GPU nodes' data volume (disk_size in Terraform): the
+# Same size as the GPU nodes' data volume (k8s/karpenter/gpu.yaml): the
 # volume created from the snapshot can't be smaller than the snapshot.
 DATA_VOLUME_SIZE="${DATA_VOLUME_SIZE:-100}"
 
@@ -163,5 +163,5 @@ while :; do
 done
 
 echo
-echo "Done. Use it with:"
-echo "  terraform apply -var='admin_cidrs=[\"<ip>/32\"]' -var='gpu_image_cache_snapshot_id=${SNAPSHOT_ID}'"
+echo "Done. Point the GPU nodes at it (once the cluster is up):"
+echo "  ./scripts/set-gpu-image-cache.sh ${SNAPSHOT_ID}"

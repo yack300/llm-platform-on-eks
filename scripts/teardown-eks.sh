@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run BEFORE `terraform destroy`. Deletes everything Argo CD deployed so that
 # the resources Kubernetes created outside Terraform are cleaned up too.
-# The ones that matter for cost are the EBS volumes behind PVCs (Qdrant,
-# Grafana): destroying the cluster with PVCs still in it orphans those volumes,
-# and they keep billing until deleted by hand.
+# The ones that matter for cost are Karpenter's instances and the EBS volumes
+# behind PVCs (Qdrant, Grafana): destroying the cluster with them still in it
+# orphans them, and they keep billing until deleted by hand.
 #
 # Usage:
 #   export AWS_PROFILE=<your-profile>
@@ -14,6 +14,20 @@ CLUSTER_NAME="${CLUSTER_NAME:-llm-platform-demo}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" >/dev/null
+
+# Karpenter's nodes aren't Terraform resources: they have to go while
+# Karpenter is still running, or they're orphaned (and keep billing). The
+# root app would recreate a deleted child app, so stop it from syncing,
+# delete the NodePools' app (Karpenter then terminates its nodes) and wait.
+echo "==> Removing Karpenter's nodes first..."
+kubectl -n argocd patch application root --type=json \
+  -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]' 2>/dev/null || true
+kubectl -n argocd delete application karpenter-nodepools --ignore-not-found --timeout=10m
+for _ in $(seq 1 60); do
+  [ -z "$(kubectl get nodeclaims -o name 2>/dev/null)" ] && break
+  sleep 10
+done
+kubectl get nodeclaims 2>/dev/null || true
 
 echo "==> Deleting the root Application (cascades to every child Application)..."
 # Each Application carries the resources finalizer, so deleting it deletes its
@@ -50,7 +64,18 @@ if [ -n "$volumes" ]; then
   exit 1
 fi
 
-echo "No PVC-backed EBS volumes left. Safe to run terraform destroy."
+echo "==> Checking for instances launched by Karpenter..."
+instances=$(aws ec2 describe-instances --region "$AWS_REGION" \
+  --filters "Name=tag:karpenter.sh/nodepool,Values=*" Name=instance-state-name,Values=pending,running,stopping,stopped \
+  --query 'Reservations[].Instances[].[InstanceId,InstanceType,Tags[?Key==`karpenter.sh/nodepool`]|[0].Value]' --output text)
+if [ -n "$instances" ]; then
+  echo "WARNING: instances launched by Karpenter are still running (they keep billing):"
+  echo "$instances"
+  echo "Terminate them: aws ec2 terminate-instances --instance-ids <id>"
+  exit 1
+fi
+
+echo "No PVC-backed EBS volumes or Karpenter instances left. Safe to run terraform destroy."
 
 # The GPU image cache snapshot (scripts/build-gpu-image-cache.sh) isn't
 # managed by Terraform and survives the destroy on purpose, so the next run

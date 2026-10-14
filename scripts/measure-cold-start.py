@@ -5,9 +5,9 @@ group at zero to the first answer served by vLLM.
 It sends one request through LiteLLM (which KEDA sees and scales vLLM 0->1;
 the client itself gets claude-fallback's answer), waits for the vLLM pod to
 be Ready, retries with fallbacks disabled until vLLM answers, and then
-rebuilds the timeline from the Kubernetes objects: pod created (KEDA), node
-created (Cluster Autoscaler + EC2), node Ready, image pull, container start,
-pod Ready. It also prints vLLM's own startup log lines (weights download and
+rebuilds the timeline from the Kubernetes objects: pod created (KEDA),
+NodeClaim created (Karpenter's launch decision), node created (EC2 boot),
+node Ready, image pull, container start, pod Ready. It also prints vLLM's own startup log lines (weights download and
 load, CUDA graph capture) to break the last stretch down further.
 
 Standard library only; uses kubectl's current context. Needs the gateway
@@ -34,7 +34,7 @@ from benchmark import master_key  # noqa: E402
 
 NAMESPACE = "llm-platform"
 POD_SELECTOR = "app=vllm-inference"
-GPU_NODE_SELECTOR = "eks.amazonaws.com/nodegroup=gpu-inference"
+GPU_NODE_SELECTOR = "karpenter.sh/nodepool=gpu"
 VLLM_LOG_PATTERNS = [
     r"Loading weights took", r"Model loading took", r"[Gg]raph capturing finished",
     r"init engine .* took", r"Starting vLLM API server", r"Application startup complete",
@@ -136,13 +136,19 @@ def main():
                 return ts(e.get("eventTime") or e.get("firstTimestamp") or e["lastTimestamp"]), e.get("message", "")
         return None, ""
 
+    # The NodeClaim Karpenter created for this node: when it decided to launch.
+    claims = kubectl_json("get", "nodeclaims", "-l", GPU_NODE_SELECTOR)["items"]
+    claim = next((c for c in claims if c.get("status", {}).get("nodeName") == pod["spec"]["nodeName"]), None)
+    capacity = node["metadata"]["labels"].get("karpenter.sh/capacity-type", "?")
+
     pulling, _ = event_time("Pulling")
     pulled, pulled_msg = event_time("Pulled")
     started = pod["status"]["containerStatuses"][0]["state"].get("running", {}).get("startedAt")
 
     steps = [
         ("vLLM pod created (KEDA 0->1)", ts(pod["metadata"]["creationTimestamp"])),
-        ("GPU node object created", ts(node["metadata"]["creationTimestamp"])),
+        ("Karpenter NodeClaim created", ts(claim["metadata"]["creationTimestamp"]) if claim else None),
+        (f"GPU node object created ({capacity})", ts(node["metadata"]["creationTimestamp"])),
         ("GPU node Ready", condition(node, "Ready")),
         ("pod scheduled on the node", condition(pod, "PodScheduled")),
         ("image pull started", pulling),
