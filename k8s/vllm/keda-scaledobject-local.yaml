@@ -45,8 +45,10 @@ spec:
     # cache takes longer: on the second EKS run KEDA killed vLLM 30 seconds
     # into loading the model. Counts pods created in the last 20 minutes
     # (the startupProbe's budget) that aren't Ready yet, so a pod that never
-    # becomes Ready can't hold the GPU forever. Uses kube-state-metrics,
-    # which kube-prometheus-stack already runs.
+    # becomes Ready can't hold the GPU forever. Pods being deleted are left
+    # out: a terminating pod isn't Ready either, and counting it made the
+    # trigger wake vLLM right after every scale-to-zero, in a loop (third EKS
+    # run). Uses kube-state-metrics, which kube-prometheus-stack already runs.
     - type: prometheus
       name: startup-in-progress
       metadata:
@@ -56,6 +58,8 @@ spec:
             (time() - kube_pod_created{namespace="llm-platform", pod=~"local-llm-mock-.*"}) < 1200
             unless on(pod)
             (kube_pod_status_ready{namespace="llm-platform", pod=~"local-llm-mock-.*", condition="true"} == 1)
+            unless on(pod)
+            kube_pod_deletion_timestamp{namespace="llm-platform", pod=~"local-llm-mock-.*"}
           ) or vector(0)
         activationThreshold: "0"
         # Never asks for more than the one replica that's starting.
