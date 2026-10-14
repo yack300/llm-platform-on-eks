@@ -12,7 +12,12 @@ output "configure_kubectl" {
 }
 
 
-output "gpu_subnet_ids" {
-  description = "Subnets the GPU node group can use (AZs that offer the GPU instance type)"
-  value       = local.gpu_subnet_ids
+# Referenced by the Karpenter Helm values and EC2NodeClasses in k8s/ (names
+# are fixed in main.tf so they can be written there ahead of time).
+output "karpenter_node_role_name" {
+  value = module.karpenter.node_iam_role_name
+}
+
+output "karpenter_interruption_queue" {
+  value = module.karpenter.queue_name
 }

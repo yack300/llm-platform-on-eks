@@ -61,29 +61,20 @@ data "aws_subnets" "default" {
   }
 }
 
-# Not every AZ offers every GPU instance type; the GPU node group only gets
-# subnets where it does, so a scale-up never targets an AZ with no capacity.
-data "aws_ec2_instance_type_offerings" "gpu" {
-  location_type = "availability-zone"
-
-  filter {
-    name   = "instance-type"
-    values = [var.gpu_instance_type]
-  }
-}
-
-data "aws_subnet" "selected" {
-  for_each = toset(local.subnet_ids)
-  id       = each.value
-}
-
 locals {
   vpc_id     = coalesce(var.vpc_id, try(data.aws_vpc.default[0].id, null))
   subnet_ids = var.subnet_ids != null ? var.subnet_ids : data.aws_subnets.default[0].ids
-  gpu_subnet_ids = [
-    for id, s in data.aws_subnet.selected : id
-    if contains(data.aws_ec2_instance_type_offerings.gpu.locations, s.availability_zone)
-  ]
+}
+
+# Karpenter's EC2NodeClasses find subnets and security groups by this tag.
+# Default VPC subnets aren't managed here, so the tag is added on its own;
+# Karpenter picks, per launch, a subnet in an AZ that offers the instance type.
+resource "aws_ec2_tag" "karpenter_discovery" {
+  for_each = toset(local.subnet_ids)
+
+  resource_id = each.value
+  key         = "karpenter.sh/discovery"
+  value       = var.cluster_name
 }
 
 # --------------------------------------------------------------------------
@@ -123,7 +114,7 @@ module "eks" {
     }
     kube-proxy = {}
     coredns    = {}
-    # Lets pods assume IAM roles (EBS CSI driver, Cluster Autoscaler).
+    # Lets pods assume IAM roles (EBS CSI driver, Karpenter).
     eks-pod-identity-agent = {
       before_compute = true
     }
@@ -136,16 +127,25 @@ module "eks" {
     }
   }
 
-  # Platform services (Argo CD, LiteLLM, Qdrant, Prometheus/Grafana, KEDA,
-  # Kyverno). Spot with several 8 GiB types to improve the odds of capacity;
-  # interruptions only restart stateless pods or reattach EBS volumes.
+  # Nodes launched by Karpenter share the platform nodes' security group
+  # (selected by this tag), whose recommended rules already allow node-to-node
+  # traffic: DNS, vLLM's port, metrics scraping.
+  node_security_group_tags = {
+    "karpenter.sh/discovery" = var.cluster_name
+  }
+
+  # Fixed-size base capacity: Argo CD, Karpenter itself (it can't run on the
+  # nodes it manages), LiteLLM, Prometheus/Grafana, KEDA, Kyverno, Qdrant.
+  # Anything that doesn't fit, and every GPU node, comes from Karpenter
+  # (k8s/karpenter/). Spot with several 8 GiB types to improve the odds of
+  # capacity; the managed node group replaces interrupted nodes.
   eks_managed_node_groups = {
     platform = {
       ami_type       = "AL2023_x86_64_STANDARD"
       capacity_type  = "SPOT"
       instance_types = ["t3.large", "t3a.large", "m5.large", "m5a.large"]
-      min_size       = 1
-      max_size       = 3
+      min_size       = 2
+      max_size       = 2
       desired_size   = 2
     }
   }
@@ -164,70 +164,34 @@ module "ebs_csi_pod_identity" {
   attach_aws_ebs_csi_policy = true
 }
 
-module "cluster_autoscaler_pod_identity" {
+# --------------------------------------------------------------------------
+# Karpenter: everything AWS-side it needs. The controller itself, its
+# NodePools and EC2NodeClasses are deployed by Argo CD (k8s/argocd/apps/
+# karpenter*.yaml, k8s/karpenter/), like every other in-cluster component.
+#
+# - Controller IAM role, bound through EKS Pod Identity to
+#   kube-system/karpenter (the Helm chart's service account).
+# - Node IAM role (+ EKS access entry) for the instances it launches. Names
+#   are fixed so the EC2NodeClasses can reference them from Git.
+# - SQS queue + EventBridge rules for spot interruptions and instance
+#   health events, so Karpenter drains a node before AWS reclaims it.
+#
+# Instances Karpenter launches are not Terraform resources: teardown has to
+# delete its NodePools first (scripts/teardown-eks.sh), or terraform destroy
+# leaves them running.
+# --------------------------------------------------------------------------
+module "karpenter" {
   #checkov:skip=CKV_TF_1:Terraform Registry module pinned by version constraint and .terraform.lock.hcl, not a git source
-  source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "~> 2.9"
+  source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+  version = "~> 21.26"
 
-  name                             = "${var.cluster_name}-cluster-autoscaler"
-  attach_cluster_autoscaler_policy = true
-  cluster_autoscaler_cluster_names = [module.eks.cluster_name]
+  cluster_name = module.eks.cluster_name
 
-  # Must match the service account of the cluster-autoscaler Helm release
-  # deployed by Argo CD (k8s/argocd/).
-  associations = {
-    cluster_autoscaler = {
-      cluster_name    = module.eks.cluster_name
-      namespace       = "kube-system"
-      service_account = "cluster-autoscaler"
-    }
-  }
-}
+  iam_role_name            = "${var.cluster_name}-karpenter"
+  iam_role_use_name_prefix = false
 
-# --------------------------------------------------------------------------
-# Node-to-node traffic between the two node groups. The platform nodes (EKS
-# module) only carry the module's node security group, whose CoreDNS rules
-# allow traffic from itself only; the GPU nodes (own module, no launch
-# template) only carry the EKS cluster primary security group. Without these
-# rules, pods on GPU nodes can't resolve DNS (vLLM can't reach Hugging Face)
-# and LiteLLM/Prometheus can't reach vLLM. Found on the first EKS run.
-# --------------------------------------------------------------------------
-resource "aws_security_group_rule" "platform_nodes_from_gpu_nodes" {
-  description              = "All traffic from GPU nodes (cluster primary SG) to platform nodes"
-  type                     = "ingress"
-  protocol                 = "-1"
-  from_port                = 0
-  to_port                  = 0
-  security_group_id        = module.eks.node_security_group_id
-  source_security_group_id = module.eks.cluster_primary_security_group_id
-}
+  node_iam_role_name            = "${var.cluster_name}-karpenter-node"
+  node_iam_role_use_name_prefix = false
 
-resource "aws_security_group_rule" "gpu_nodes_from_platform_nodes" {
-  description              = "All traffic from platform nodes to GPU nodes (cluster primary SG)"
-  type                     = "ingress"
-  protocol                 = "-1"
-  from_port                = 0
-  to_port                  = 0
-  security_group_id        = module.eks.cluster_primary_security_group_id
-  source_security_group_id = module.eks.node_security_group_id
-}
-
-# --------------------------------------------------------------------------
-# GPU node group, separate from the main module so it can be destroyed
-# independently when not in use (cost control).
-# --------------------------------------------------------------------------
-module "gpu_nodegroup" {
-  source = "./modules/eks-gpu-nodegroup"
-
-  cluster_name  = module.eks.cluster_name
-  subnet_ids    = local.gpu_subnet_ids
-  instance_type = var.gpu_instance_type
-  use_spot      = var.use_spot_gpu_nodes
-  desired_size  = var.gpu_nodes_desired
-
-  data_volume_snapshot_id = var.gpu_image_cache_snapshot_id
-
-  # Node groups need the cluster's networking/identity add-ons in place
-  # before nodes can join.
-  depends_on = [module.eks]
+  queue_name = "${var.cluster_name}-karpenter"
 }

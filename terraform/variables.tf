@@ -43,27 +43,3 @@ variable "admin_cidrs" {
   description = "CIDRs allowed to reach the public EKS API endpoint, e.g. [\"<your-ip>/32\"] (curl -s https://checkip.amazonaws.com). No default on purpose: never open the API to 0.0.0.0/0 by accident."
   type        = list(string)
 }
-
-variable "gpu_instance_type" {
-  description = "GPU instance type for the inference node group. g4dn.xlarge is the cheapest GPU option on AWS."
-  type        = string
-  default     = "g4dn.xlarge"
-}
-
-variable "use_spot_gpu_nodes" {
-  description = "Use spot instances for the GPU node group (significantly reduces cost, at the risk of interruption)"
-  type        = bool
-  default     = true
-}
-
-variable "gpu_image_cache_snapshot_id" {
-  description = "EBS snapshot with the vLLM image pre-pulled, used as the GPU nodes' data volume (build it with scripts/build-gpu-image-cache.sh). null = pull the image on every cold start."
-  type        = string
-  default     = null
-}
-
-variable "gpu_nodes_desired" {
-  description = "Initial number of GPU nodes. Keep at 0: after creation the Cluster Autoscaler adds a node when a vLLM pod is Pending and removes it when idle (Terraform ignores later changes)."
-  type        = number
-  default     = 0
-}
