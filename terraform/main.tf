@@ -189,6 +189,10 @@ module "karpenter" {
 
   iam_role_name            = "${var.cluster_name}-karpenter"
   iam_role_use_name_prefix = false
+  # The controller policy is over the 6,144-character limit of a managed
+  # IAM policy (CreatePolicy failed on the first apply); inline role
+  # policies allow 10,240.
+  enable_inline_policy = true
 
   node_iam_role_name            = "${var.cluster_name}-karpenter-node"
   node_iam_role_use_name_prefix = false
