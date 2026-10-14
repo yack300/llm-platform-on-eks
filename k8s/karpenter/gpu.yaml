@@ -1,0 +1,87 @@
+# GPU capacity for vLLM, from zero. When KEDA scales vLLM 0 -> 1, the pod
+# can't be scheduled anywhere (it needs nvidia.com/gpu) and Karpenter
+# launches one of these; once the node is empty again it's removed.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu
+      requirements:
+        # g4dn.xlarge (1x NVIDIA T4, 16 GB) is the cheapest GPU on AWS and
+        # fits the AWQ Mistral-7B with room for the KV cache.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["g4dn.xlarge"]
+        # Spot first (about half the price); Karpenter falls back to
+        # on-demand by itself when there's no spot capacity, which happened
+        # on both EKS runs with the managed node group (fixed to one type).
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+      # Only pods that tolerate it (vLLM) land here.
+      taints:
+        - key: nvidia.com/gpu
+          value: present
+          effect: NoSchedule
+  # Cost guard: never more than two GPUs, whatever KEDA asks for.
+  limits:
+    nvidia.com/gpu: 2
+  disruption:
+    # Remove a GPU node 5 minutes after its last pod (vLLM) leaves.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 5m
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu
+spec:
+  # Pinned like every other version in the repo. Karpenter picks the NVIDIA
+  # variant for GPU instance types, which ships the driver and runs the
+  # NVIDIA device plugin as a host service. Keep the device plugin on its
+  # default CDI strategy: 1.66.0 doesn't mount the driver libraries into
+  # containers with the envvar one (bottlerocket-os/bottlerocket#4950).
+  amiSelectorTerms:
+    - alias: bottlerocket@v1.66.0
+  role: llm-platform-demo-karpenter-node # terraform: module.karpenter
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: llm-platform-demo
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: llm-platform-demo
+  # IMDSv2 only, and unreachable from pods (hop limit 1): workloads get AWS
+  # access through EKS Pod Identity.
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  # Bottlerocket keeps the OS (/dev/xvda) and containerd's images (/dev/xvdb)
+  # on separate volumes. The vLLM image unpacks to well over the 20 GiB
+  # default data volume (it filled the disk on the first EKS run).
+  #
+  # The data volume can be created from an EBS snapshot with the vLLM image
+  # already pulled (scripts/build-gpu-image-cache.sh), with a provisioned
+  # initialization rate so it isn't read lazily from S3; both are set by
+  # scripts/set-gpu-image-cache.sh since the snapshot is per account. Unlike
+  # EKS managed node groups, which dropped the rate on the second EKS run,
+  # Karpenter passes it through.
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 4Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+    - deviceName: /dev/xvdb
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true

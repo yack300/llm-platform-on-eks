@@ -1,0 +1,52 @@
+# Karpenter: launches a node when a pod can't be scheduled (the vLLM pod KEDA
+# wakes from 0, or a platform pod that doesn't fit) and removes it once empty.
+# Replaces the Cluster Autoscaler: it builds each launch from the
+# EC2NodeClass instead of a fixed node group, so it can pick spot or
+# on-demand per launch, the AZ of a pod's volume, and EBS settings EKS
+# managed node groups drop (see k8s/karpenter/).
+#
+# AWS side (IAM via EKS Pod Identity for kube-system/karpenter, interruption
+# queue, node role) comes from terraform/main.tf; clusterName and
+# interruptionQueue must match it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  # Deleting this Application also deletes everything it deployed (PVCs
+  # included), which is what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: public.ecr.aws/karpenter
+    chart: karpenter
+    targetRevision: 1.15.0 # Kubernetes 1.36 needs >= 1.13
+    helm:
+      releaseName: karpenter
+      valuesObject:
+        settings:
+          clusterName: llm-platform-demo
+          interruptionQueue: llm-platform-demo-karpenter
+        # One replica fits the two small platform nodes; Karpenter only acts
+        # on scaling decisions, running pods don't depend on it.
+        replicas: 1
+        controller:
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
