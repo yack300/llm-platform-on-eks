@@ -180,8 +180,10 @@ already at 1, so `increase()` reads 0 for the very first request after LiteLLM s
 (the query falls back to the raw value for series younger than the window). While vLLM
 cold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0
 also needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`
-NodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10 minutes, split between the vLLM image pull and vLLM's
-own startup (docs/cost-comparison.md). `keda-scaledobject-local.yaml`
+NodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own
+startup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger
+must keep excluding terminating pods: counting them woke vLLM after every
+scale-to-zero, in a loop. `keda-scaledobject-local.yaml`
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
 

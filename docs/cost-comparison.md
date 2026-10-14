@@ -144,6 +144,53 @@ starts, the snapshot builds and the teardown):
 | S3 (Terraform state) | < $0.01 |
 | **Total before tax** | **$1.45** |
 
+## Third run (2026-10-14): Karpenter, image cache that works
+
+GPU nodes now come from Karpenter (`k8s/karpenter/`) instead of a managed
+node group + Cluster Autoscaler. Karpenter builds each launch from the
+EC2NodeClass, so the data volume's provisioned initialization rate actually
+reaches EC2 (verified on the volume: `InitializationType: provisioned-rate`,
+300 MiB/s, 100% before vLLM needed it). Same measurement script, single
+request, from zero vLLM pods and zero GPU nodes:
+
+| | Karpenter, no cache | Karpenter + snapshot (1) | Karpenter + snapshot (2) |
+|---|---|---|---|
+| KEDA sees the request | 41 s | 45 s | 22 s |
+| Karpenter decides (NodeClaim) | +12 s | +12 s | +11 s |
+| EC2 node object | +19 s | +32 s | +24 s |
+| Node Ready | +15 s | +14 s | +13 s |
+| Image pull | 4:41 | 0 (on disk) | 0 (on disk) |
+| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |
+| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |
+
+**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across
+two samples. The image pull is gone, and vLLM's own startup is faster too
+(model load ~30 s vs ~84 s), since the volume is fully written before vLLM
+reads it.
+
+Every GPU node came up on-demand: Karpenter asked for spot first, EC2
+answered `UnfulfillableCapacity` (as on both earlier runs) and the retry on
+on-demand launched ~12 s later, with no manual switch. Back to zero after the
+last request: vLLM at 0 replicas, then Karpenter decides to remove the empty
+node 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes
+after that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.
+
+Bugs found on this run:
+
+- **Karpenter's controller IAM policy exceeds the 6,144-character limit of a
+  managed policy**: created as an inline role policy (`enable_inline_policy`).
+- **The KEDA startup trigger added on the second run caused a scale loop**:
+  a pod being deleted isn't Ready either, so after every scale-to-zero the
+  terminating pod counted as "starting" and woke vLLM again 30 s later. It
+  only showed once the image cache made vLLM Ready in ~3 minutes (it then
+  went back to zero two minutes later, over and over), and kept the GPU node
+  up ~1 hour longer than needed. Terminating pods no longer count.
+- Karpenter logged "no subnets found" for a few seconds after starting, before
+  it had discovered the tagged subnets; it resolved by itself.
+
+Not measured this time: warm throughput/TTFT (unchanged from the second run,
+same GPU and vLLM version).
+
 ## What the whole session cost
 
 The full AWS bill for the day (Cost Explorer), from `terraform apply` through
