@@ -204,10 +204,23 @@ What this run cost (Cost Explorer; ~2.5 hours of cluster time, including the
 | S3 (Terraform state) | < $0.01 |
 | **Total before tax** | **$2.12** |
 
-EC2 other went from $0.20 on the second run to $0.82, most likely the
-provisioned volume initialization charged on each GPU volume created from
-the snapshot; check the usage type breakdown before relying on the
-~$0.11-per-cold-start estimate in `scripts/set-gpu-image-cache.sh`.
+EC2 other went from $0.20 on the second run to $0.82. By usage type:
+
+| Usage type | Second run | Third run |
+|---|---|---|
+| Provisioned volume initialization | — | $0.21 (58.7 GB: 2 volumes × 29.4 GB) |
+| Regional data transfer | $0.15 (15.3 GB) | $0.56 (55.9 GB) |
+| gp3 volumes + snapshot | $0.05 | $0.04 |
+
+- **Volume initialization is ~$0.11 per cold start** with the cache
+  ($0.0036/GB × 29.4 GB), as estimated.
+- **Regional data transfer tracks vLLM starts, not cold starts.** Every
+  vLLM pod downloads the model's 3.9 GB of weights from Hugging Face again,
+  billed here at $0.01/GB (~$0.04 per start): ~4 starts on the second run
+  (~15.6 GB) and ~14 on the third, ~10 of them from the KEDA scale loop
+  (~55 GB). Cost Explorer doesn't show the traffic's destination, so this is
+  inferred from how closely the two match. Caching the weights on the node
+  too (like the image) would remove it, and ~20 s of every cold start.
 
 ## What the whole session cost
 
