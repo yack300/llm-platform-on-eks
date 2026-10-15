@@ -191,6 +191,24 @@ Bugs found on this run:
 Not measured this time: warm throughput/TTFT (unchanged from the second run,
 same GPU and vLLM version).
 
+What this run cost (Cost Explorer; ~2.5 hours of cluster time, including the
+~1 hour the KEDA scale loop kept a GPU node up):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU nodes, snapshot builder) | $0.97 |
+| EC2 other (EBS volumes, snapshot, volume initialization) | $0.82 |
+| EKS control plane | $0.24 |
+| KMS (includes a key not created by this project) | $0.07 |
+| VPC (public IPv4 addresses) | $0.03 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$2.12** |
+
+EC2 other went from $0.20 on the second run to $0.82, most likely the
+provisioned volume initialization charged on each GPU volume created from
+the snapshot; check the usage type breakdown before relying on the
+~$0.11-per-cold-start estimate in `scripts/set-gpu-image-cache.sh`.
+
 ## What the whole session cost
 
 The full AWS bill for the day (Cost Explorer), from `terraform apply` through
