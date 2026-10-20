@@ -1,8 +1,9 @@
-# There's no custom image to build here (this repo deploys third-party OSS
-# images: vllm/vllm-openai, litellm, qdrant, ollama), so there's no
-# build/push/deploy job. Argo CD watches the repo and syncs whatever lands
-# on main; CI only gates what's allowed to reach main (GitOps: no manual
-# kubectl/deploy, everything goes through Git).
+# Gates what's allowed to reach main, which Argo CD then syncs (GitOps: no
+# manual kubectl/deploy, everything goes through Git). Scans run first; then
+# manifest/Terraform validation and the RAG image (apps/rag/), the only image
+# built here: everything else is third-party (vLLM, LiteLLM, Qdrant, Ollama).
+# On main, the RAG image is pushed to GHCR and signed keylessly; the cluster
+# only admits it with that signature (require-image-signature.yaml).
 #
 # Every tool runs from a version-pinned container image, so the same commands
 # work locally with `docker run` (see CLAUDE.md). Bump versions deliberately.
@@ -31,6 +32,13 @@ env:
   # Keep in sync with the Kyverno version running in the cluster.
   KYVERNO_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.1
   TERRAFORM_IMAGE: hashicorp/terraform:1.16.4
+  # Same base as apps/rag/Dockerfile, for the unit tests.
+  PYTHON_IMAGE: python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+  # v2, not v3: cosign v3 writes signatures only as OCI referrers in the new
+  # bundle format, which Kyverno's verifyImages doesn't read and GHCR can't
+  # serve (no referrers API). v2 writes the classic .sig tag.
+  COSIGN_IMAGE: ghcr.io/sigstore/cosign/cosign:v2.6.5
+  RAG_IMAGE: ghcr.io/yack300/llm-platform-rag
 
 jobs:
   # --- DevSecOps: shift-left scans ---
@@ -84,10 +92,27 @@ jobs:
       # manifests, so a violation fails here instead of at Argo CD sync time.
       # Helm-managed components (Qdrant, kube-prometheus-stack) aren't covered:
       # only their values files live here.
-      - run: >-
-          docker run --rm -v "$PWD":/repo -w /repo "$KYVERNO_IMAGE"
-          apply k8s/security/kyverno-policies/
-          --resource k8s/vllm/ --resource k8s/litellm/
+      - name: Admission policies against every workload manifest
+        # Explicit bash gets -o pipefail, so `| tee` can't hide a failure.
+        shell: bash
+        run: |
+          # One -r per file. Given a directory, kyverno apply ignores every
+          # other --resource; and two manifests with the same name (the
+          # EKS/local LiteLLM ConfigMap pair) make it panic yet exit 0. Both
+          # kept LiteLLM's Deployment out of this check until the RAG work.
+          args=()
+          for f in k8s/vllm/*.yaml k8s/litellm/*.yaml k8s/rag/*.yaml; do
+            grep -qE '^kind: (Deployment|Job|StatefulSet|DaemonSet)$' "$f" && args+=(-r "$f")
+          done
+          # require-image-signature needs the image already pushed and signed:
+          # it's enforced at admission time instead (signed below on main).
+          policies=()
+          for f in k8s/security/kyverno-policies/*.yaml; do
+            [[ $f == *require-image-signature* ]] || policies+=("$f")
+          done
+          docker run --rm -v "$PWD":/repo -w /repo "$KYVERNO_IMAGE" \
+            apply "${policies[@]}" "${args[@]}" 2>&1 | tee kyverno.out
+          ! grep -q panic kyverno.out
 
   terraform:
     needs: [checkov, trivy-fs, gitleaks]
@@ -103,3 +128,61 @@ jobs:
             terraform -chdir=terraform/bootstrap init -input=false
             terraform -chdir=terraform/bootstrap validate
           '
+
+  # --- RAG image: test, build, scan; push + sign on main only ---
+  rag-image:
+    needs: [checkov, trivy-fs, gitleaks]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write # push to GHCR (main only)
+      id-token: write # GitHub OIDC token for keyless signing (main only)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Unit tests
+        run: >-
+          docker run --rm -v "$PWD/apps/rag":/app -w /app "$PYTHON_IMAGE"
+          sh -c 'pip install -q --root-user-action=ignore -r requirements-dev.txt && python -m pytest -q tests'
+
+      - name: Manifests use apps/rag/VERSION
+        run: |
+          version=$(cat apps/rag/VERSION)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if grep -h "image: $RAG_IMAGE:" k8s/rag/*.yaml | grep -v ":$version\$"; then
+            echo "::error::k8s/rag/ references a tag other than $version"; exit 1
+          fi
+
+      - name: Build
+        run: docker build -f apps/rag/Dockerfile -t "$RAG_IMAGE:$VERSION" .
+
+      # Image vulnerabilities (OS packages and Python dependencies).
+      - name: Scan the image
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE"
+          image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 "$RAG_IMAGE:$VERSION"
+
+      # Tags are immutable: a published version is never overwritten. To
+      # release a change, bump apps/rag/VERSION and the tags in k8s/rag/.
+      - name: Push and sign
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          if docker manifest inspect "$RAG_IMAGE:$VERSION" >/dev/null 2>&1; then
+            echo "::notice::$RAG_IMAGE:$VERSION is already published; bump apps/rag/VERSION to release changes."
+            exit 0
+          fi
+          docker push "$RAG_IMAGE:$VERSION"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$RAG_IMAGE:$VERSION")
+          # Keyless: cosign trades the workflow's OIDC token for a short-lived
+          # certificate from Fulcio, signs the digest and records it in Rekor.
+          # The identity Kyverno checks is this workflow file on main.
+          # Runner's uid so it can read the owner-only docker login file.
+          docker run --rm --user "$(id -u)" -e HOME=/tmp \
+            -v "$HOME/.docker":/docker -e DOCKER_CONFIG=/docker \
+            -e ACTIONS_ID_TOKEN_REQUEST_URL -e ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            "$COSIGN_IMAGE" sign --yes "$digest"
+          echo "::notice::Published and signed $digest"
