@@ -1,0 +1,8 @@
+# Direct dependencies, pinned. requirements.txt is the full lock generated
+# from this file (see the Dockerfile header for the command).
+fastapi==0.150.0
+uvicorn==0.54.0
+qdrant-client==1.19.1
+fastembed==0.9.0
+httpx==0.28.1
+prometheus-client==0.26.0
