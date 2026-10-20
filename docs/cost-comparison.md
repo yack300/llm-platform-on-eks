@@ -222,6 +222,58 @@ EC2 other went from $0.20 on the second run to $0.82. By usage type:
   inferred from how closely the two match. Caching the weights on the node
   too (like the image) would remove it, and ~20 s of every cold start.
 
+## Fourth run (2026-10-20): RAG service and signed images
+
+The RAG service (`apps/rag/`) on EKS for the first time, with its image
+built, scanned and signed keylessly by CI and `require-image-signature.yaml`
+in Enforce.
+
+**Supply chain, end to end.** CI pushed `ghcr.io/yack300/llm-platform-rag`
+and signed it with the workflow's GitHub OIDC identity; `cosign verify`
+accepts it for `ci.yml@refs/heads/main` and rejects it for any other ref.
+In the cluster Kyverno admitted the pods and rewrote their image to the
+verified digest (`...:0.1.2@sha256:...`). Two more versions shipped during
+the session the same way (0.1.1, 0.1.2): a commit bumping `apps/rag/VERSION`
+and `k8s/rag/` together, CI publishing and signing, Argo CD syncing.
+
+**Answer quality**, Mistral-7B AWQ through LiteLLM, `top_k=4`, 1.5-6 s per
+answer:
+
+| Question | Result |
+|---|---|
+| How does the platform wake vLLM up from zero? | Partial: the core is right, but it blends two passages into a "bug" that doesn't exist |
+| Why did the EBS snapshot make the cold start slower? | Correct and complete |
+| How long is a cold start with Karpenter and the cache? | Correct (5-6 min), cited |
+| What did the second EKS session cost? | Correct ($1.45 with the breakdown) |
+| Which Kubernetes version does the cluster run? | Retrieval miss: the fact is in the docs but not in the top 4 chunks; it said it didn't know |
+| What is the capital of France? / today's date (in Spanish) | Correctly declined |
+
+4 of 6 correct, 1 partial, 1 retrieval miss, no invented answers.
+Off-topic questions score ~0.4-0.5 similarity against ~0.75-0.8 for answerable
+ones, so a similarity threshold could skip the model call altogether. The
+embedding model is English-only (`bge-small-en`): Spanish questions retrieve
+worse and get English answers. Measuring changes like these against a fixed
+question set is the next project (evaluation in CI).
+
+**Ingestion**: 60 chunks in 18 s on a platform node (it took minutes on the
+8 GB laptop, starved by the rest of the local stack).
+
+Bugs found on this run:
+
+- **Ingestion OOMKilled** under its 768 MiB limit: ONNX memory grows with the
+  batch (peak 834 MiB at 32 chunks per call, 452 MiB at 8). Batch now 8.
+- **A failing Sync hook blocks newer revisions**: the ingestion Job is an
+  Argo CD Sync hook, and while it kept failing on 0.1.0 the sync operation
+  stayed Running on the old revision, so the fixed 0.1.1 commit wasn't picked
+  up until the operation was terminated by hand. The failed attempts left 12
+  half-built collections; the next successful ingestion removed them all.
+- **Mistral's chat template rejects a system message** (400 from vLLM); the
+  local Ollama mock accepted it. The prompt is now a single user message.
+- **claude-fallback rejected `temperature=0`** (claude-sonnet-5 only accepts
+  1), for any gateway client: LiteLLM now drops unsupported parameters
+  (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change
+  needed a manual rollout restart.
+
 ## What the whole session cost
 
 The full AWS bill for the day (Cost Explorer), from `terraform apply` through

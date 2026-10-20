@@ -219,6 +219,12 @@ half-built index. On EKS the Job is an Argo CD Sync hook (Job templates are
 immutable); `require-image-signature.yaml` admits `ghcr.io/yack300/*` only with a
 signature from this repo's ci.yml on main. Locally, `deploy-local.sh` builds the image
 as `llm-platform-rag:dev` and loads it into kind, a name that policy doesn't match.
+Prompts go as a single user message: Mistral's chat template rejects a system role.
+Embedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the
+ingestion hook keeps failing, Argo CD stays on that revision until the sync operation
+is terminated. LiteLLM's ConfigMap (incl. `drop_params: true`, needed because
+claude-sonnet-5 rejects temperature != 1) is only read at startup: restart the
+Deployment after changing it.
 
 **Cost control is a running theme, not just a comment.** There are no GPU nodes while
 vLLM is idle (Karpenter removes them once empty), NodePools cap GPUs and extra CPUs with

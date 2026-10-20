@@ -132,6 +132,10 @@ Validated end to end on a real AWS account (2026-10-06): `terraform apply`,
 Argo CD sync of every component, scale-to-zero and wake-up through the
 Cluster Autoscaler, benchmark, and teardown with no resources left behind.
 
+Fourth run (2026-10-20): the RAG service on EKS, with its image signed in CI
+and admitted by Kyverno in Enforce only with that signature (pinned to the
+verified digest); answers come from Mistral-7B through LiteLLM.
+
 Third run (2026-10-14): GPU nodes moved from a managed node group + Cluster
 Autoscaler to Karpenter, validated on EKS: spot with automatic on-demand
 fallback, image cache with a provisioned initialization rate (cold start
@@ -146,6 +150,10 @@ Known gaps:
 - The platform NodePool's AZ-aware launches (for Qdrant/Grafana volumes
   stranded by a spot interruption) haven't been exercised on EKS yet.
 - The `kyverno` Application shows OutOfSync on its policy CRDs.
-- The RAG service is validated locally; its signed image and the Enforce
-  signature policy haven't run on EKS yet.
+- RAG answers are right on 4 of 6 test questions (fourth run, see
+  docs/cost-comparison.md); there's no automated evaluation yet, and the
+  embedding model is English-only.
+- LiteLLM doesn't restart on a ConfigMap change (no config checksum on its
+  Deployment); a failing ingestion Sync hook blocks newer revisions until the
+  sync is terminated.
 - OpenCost (infra-side cost) isn't installed yet.
