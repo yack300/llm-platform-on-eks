@@ -41,6 +41,10 @@ data:
       # in k8s/observability/servicemonitors.yaml.
       success_callback: ["prometheus"]
       failure_callback: ["prometheus"]
+      # Drop request parameters a model doesn't support instead of failing
+      # the call: claude-sonnet-5 only accepts temperature=1, so any client
+      # sending temperature=0 had its claude-fallback rejected too.
+      drop_params: true
       # /metrics requires the master key by default; Prometheus scrapes it
       # without credentials rather than being handed the gateway admin key.
       # The endpoint is only reachable in-cluster (ClusterIP Service).
