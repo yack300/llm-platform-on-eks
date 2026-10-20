@@ -82,7 +82,25 @@ kubectl -n llm-platform scale deployment/litellm-gateway --replicas=1
 kubectl -n llm-platform patch deployment/litellm-gateway \
   -p '{"spec":{"strategy":{"rollingUpdate":{"maxSurge":0,"maxUnavailable":1}}}}'
 
+echo "==> Building the RAG image and loading it into kind..."
+# Built here and loaded straight into the kind node instead of pulled from
+# GHCR, under a local name: require-image-signature only admits
+# ghcr.io/yack300/* images signed by CI, which a laptop build can't be.
+docker build -f ../apps/rag/Dockerfile -t llm-platform-rag:dev ..
+kind load docker-image llm-platform-rag:dev --name "$CLUSTER_NAME"
+
+echo "==> Applying RAG (ingestion Job + API)..."
+# A Job's pod template is immutable: recreate it so it runs again (on EKS,
+# Argo CD does this with a Sync hook).
+kubectl -n llm-platform delete job rag-ingest --ignore-not-found
+for f in ../k8s/rag/*.yaml; do
+  sed 's#ghcr.io/yack300/llm-platform-rag:[^[:space:]]*#llm-platform-rag:dev#' "$f" | kubectl apply -f -
+done
+
 echo "----------------------------------------------------------------------"
+echo "RAG: kubectl -n llm-platform port-forward svc/rag-api 8080:8080"
+echo "  curl -s localhost:8080/ask -H 'Content-Type: application/json' \\"
+echo "    -d '{\"question\": \"How does the platform scale vLLM to zero?\"}'"
 echo "LiteLLM master key:"
 echo "  kubectl -n llm-platform get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d"
 echo "Local setup ready: vllm/deployment.yaml (real GPU) and litellm/configmap.yaml"
