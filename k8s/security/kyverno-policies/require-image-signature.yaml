@@ -1,27 +1,23 @@
-# Requires Kyverno installed with the image verification feature (default
-# since Kyverno 1.8+): https://kyverno.io/docs/writing-policies/verify-images/
+# Supply chain: only admit this repo's own images (ghcr.io/yack300/*) if CI
+# signed them. Third-party images (vLLM, LiteLLM, Qdrant, ...) aren't matched:
+# they aren't signed by this repo and would always fail.
 #
-# Supply-chain policy for CKS practice: verifies Cosign/Sigstore signatures.
-# Scoped ONLY to images published under your own registry namespace
-# (REPLACE-WITH-YOUR-REGISTRY/*) — NOT to the third-party OSS images this
-# repo currently deploys (vllm/vllm-openai, ghcr.io/berriai/litellm,
-# qdrant/qdrant, ollama/ollama), which aren't signed by you and would
-# always fail verification. If a custom app image is ever added to this
-# repo (e.g. the RAG ingestion service, see k8s/qdrant/helm-values.yaml),
-# sign it in CI with `cosign sign --key cosign.key $IMAGE` and it'll be
-# covered by this rule automatically.
+# Keyless signing (Sigstore): CI runs `cosign sign` with the workflow's
+# GitHub OIDC identity, and the signature lands in the public Rekor
+# transparency log. There's no private key to store or leak; what's verified
+# is *who* signed: the ci.yml workflow of this repository, on main. An image
+# pushed from a laptop, a fork or another branch is rejected.
 #
-# Setup:
-#   cosign generate-key-pair
-#   kubectl create secret generic cosign-public-key -n kyverno \
-#     --from-file=cosign.pub=cosign.pub
+# mutateDigest rewrites the Pod's image to the verified digest, so the tag
+# can't be repointed between verification and pull.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: require-image-signature
 spec:
-  validationFailureAction: Audit # switch to Enforce once a real signed image + key exist
+  validationFailureAction: Enforce
   background: false
+  webhookTimeoutSeconds: 30 # verification calls GHCR and Rekor
   rules:
     - name: verify-own-images-signed
       match:
@@ -33,15 +29,12 @@ spec:
                 - llm-platform
       verifyImages:
         - imageReferences:
-            - "REPLACE-WITH-YOUR-REGISTRY/*"
-          # Defaults to true, but Kyverno rejects mutateDigest with Audit
-          # (it would rewrite images while only auditing). Set back to true
-          # when switching validationFailureAction to Enforce.
-          mutateDigest: false
+            - "ghcr.io/yack300/*"
+          mutateDigest: true
           attestors:
             - entries:
-                - keys:
-                    publicKeys: |-
-                      -----BEGIN PUBLIC KEY-----
-                      REPLACE-WITH-COSIGN-PUBLIC-KEY
-                      -----END PUBLIC KEY-----
+                - keyless:
+                    issuer: https://token.actions.githubusercontent.com
+                    subject: https://github.com/yack300/llm-platform-on-eks/.github/workflows/ci.yml@refs/heads/main
+                    rekor:
+                      url: https://rekor.sigstore.dev
