@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Reference/portfolio platform demonstrating LLM inference serving, gateway, RAG, cost
 observability, and security on EKS, using the same GitOps pattern (Terraform + Argo CD)
-used in production elsewhere. It is infrastructure/config only — there is no
-application code and no Dockerfile; every workload is an upstream OSS image
-(`vllm/vllm-openai`, `ghcr.io/berriai/litellm`, `qdrant/qdrant`, `ollama/ollama`)
-deployed via Terraform (AWS resources) and Kubernetes manifests / Helm values
+used in production elsewhere. Mostly infrastructure/config: every workload is an
+upstream OSS image (`vllm/vllm-openai`, `ghcr.io/berriai/litellm`, `qdrant/qdrant`,
+`ollama/ollama`) except the RAG service in `apps/rag/` (Python, the only image built
+here), deployed via Terraform (AWS resources) and Kubernetes manifests / Helm values
 (cluster workloads, synced by Argo CD — never `kubectl apply` by hand on EKS).
 
 All 5 layers are meant to work together but are logically independent — see the table
@@ -55,7 +55,12 @@ docker run --rm -v "$PWD":/repo -w /repo bridgecrew/checkov:3.3.20 -d terraform/
 docker run --rm -v "$PWD":/repo -w /repo aquasec/trivy:0.74.0 fs --severity CRITICAL,HIGH --exit-code 1 .
 docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/4c8dc296d32b06d15ccde9668ff136c951f4d539/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.36.0 k8s/
-docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/ --resource k8s/vllm/ --resource k8s/litellm/
+# kyverno: one -r per workload file (see the workflow's kyverno job for why), without
+# require-image-signature, e.g.
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/disallow-latest-tag.yaml k8s/security/kyverno-policies/disallow-privileged-containers.yaml k8s/security/kyverno-policies/require-resource-limits.yaml k8s/security/kyverno-policies/restrict-host-network.yaml -r k8s/vllm/deployment.yaml -r k8s/vllm/local-cpu-mock-deployment.yaml -r k8s/litellm/deployment.yaml -r k8s/rag/api.yaml -r k8s/rag/ingest-job.yaml
+# RAG unit tests (no model or Qdrant needed) and image build (from the repo root)
+docker run --rm -v "$PWD/apps/rag":/app -w /app python:3.12.15-slim sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q tests'
+docker build -f apps/rag/Dockerfile -t llm-platform-rag:dev .
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
@@ -79,7 +84,11 @@ reports ~10 K8s hardening findings (e.g. readOnlyRootFilesystem) that aren't fix
 `kyverno apply` runs the same `Enforce` admission policies the cluster uses against
 the raw manifests. Any new Deployment in `llm-platform` must pin its image tag and set
 `securityContext.allowPrivilegeEscalation: false` plus CPU/memory requests and limits,
-or it will be rejected both in CI and at admission time.
+or it will be rejected both in CI and at admission time. Pass workload manifests one
+`-r` per file: with a directory, `kyverno apply` ignores every other `--resource`, and
+the same-named EKS/local LiteLLM ConfigMaps make it panic yet exit 0 (both hid
+LiteLLM from CI until the RAG work). Container names with hyphens need the quoted
+JMESPath form in `disallow-latest-tag.yaml`.
 
 ## Architecture notes that span multiple files
 
@@ -99,7 +108,8 @@ imperative step on EKS: it installs Argo CD (`install/argocd-values.yaml`), crea
 an app-of-apps over `apps/`. Each file in `apps/` is one `Application`: plain
 directories of this repo (excluding `*local*` files), or Helm charts as multi-source
 apps (chart from its repo + `$values/<path>` from this repo). Sync waves order them
-(-1 StorageClass, 0 operators/add-ons, 1 things needing their CRDs, 2 vLLM/LiteLLM);
+(-1 StorageClass, 0 operators/add-ons, 1 things needing their CRDs, 2 vLLM/LiteLLM,
+3 RAG);
 waves only wait on child Applications because `argocd-values.yaml` restores the
 Application health check. To add a component: add an `apps/<name>.yaml` with the right
 wave; chart versions are pinned in each file. `root.yaml` and every app point at the
@@ -187,13 +197,28 @@ scale-to-zero, in a loop. `keda-scaledobject-local.yaml`
 mirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,
 wakes on the next request).
 
-**CI has no build/deploy stage on purpose.** `.github/workflows/ci.yml` runs scans
-(Checkov, Trivy fs, GitLeaks) and, once they pass, validation (kubeconform and
-`kyverno apply` against `k8s/`, `terraform validate`/`fmt` against `terraform/` and
-`terraform/bootstrap/`) — it gates what's allowed to reach `main`, then Argo CD syncs directly from `main`. If real
-application code is ever added to this repo (e.g. the RAG ingestion pipeline, which
-today explicitly lives outside this repo per the comment in
-`k8s/qdrant/helm-values.yaml`), build/push stages would need to come back.
+**CI gates main; Argo CD deploys.** `.github/workflows/ci.yml` runs scans (Checkov,
+Trivy fs, GitLeaks) and, once they pass, validation (kubeconform and `kyverno apply`
+against `k8s/`, `terraform validate`/`fmt`) plus the `rag-image` job: unit tests, a
+check that `k8s/rag/` uses the tag in `apps/rag/VERSION`, build, Trivy image scan, and
+on main only, push to GHCR and keyless `cosign sign`. There's no deploy step: Argo CD
+syncs from `main`. Image tags are immutable: to release RAG changes, bump
+`apps/rag/VERSION` and the tags in `k8s/rag/` in the same commit (CI skips pushing a
+tag that already exists). Cosign stays on v2 on purpose: v3 writes signatures only as
+OCI referrers in the new bundle format, which Kyverno's `verifyImages` doesn't read and
+GHCR can't serve.
+
+**RAG (`apps/rag/`, `k8s/rag/`).** One image, two entrypoints: the ingestion Job
+(`python -m rag.ingest`) indexes the project's own docs (README, CLAUDE.md, docs/,
+copied into the image at build time, so the index matches the image version) and the
+API (`POST /ask`) retrieves from Qdrant and answers through LiteLLM like any client.
+Embeddings run on CPU with fastembed; the model is baked into the image and pods run
+with `HF_HUB_OFFLINE=1`. Each ingestion writes a new collection and atomically
+repoints the `platform-docs` alias, deleting older versions, so queries never see a
+half-built index. On EKS the Job is an Argo CD Sync hook (Job templates are
+immutable); `require-image-signature.yaml` admits `ghcr.io/yack300/*` only with a
+signature from this repo's ci.yml on main. Locally, `deploy-local.sh` builds the image
+as `llm-platform-rag:dev` and loads it into kind, a name that policy doesn't match.
 
 **Cost control is a running theme, not just a comment.** There are no GPU nodes while
 vLLM is idle (Karpenter removes them once empty), NodePools cap GPUs and extra CPUs with

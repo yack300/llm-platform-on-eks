@@ -71,7 +71,7 @@ validate) passes on `main`.
 |---|------|------------------------|----------------|
 | 1 | Serving | vLLM + KEDA | MLOps: deploying and autoscaling an LLM on K8s |
 | 2 | Model Gateway | LiteLLM | AI Platform Engineering: unified multi-provider proxy |
-| 3 | RAG | Qdrant | End-to-end retrieval-augmented generation pipeline |
+| 3 | RAG | Qdrant + own Python service | Ingestion Job and Q&A API over the project's own docs, image signed in CI |
 | 4 | Cost observability | Prometheus + Grafana + OpenCost/Kubecost | FinOps applied to AI: cost per request/token |
 | 5 | Security | Trivy, Checkov, Kyverno, GitLeaks | DevSecOps: shift-left in the pipeline and in the cluster |
 
@@ -83,17 +83,20 @@ llm-platform-on-eks/
 │   ├── bootstrap/            # One-time bootstrap: S3 bucket for remote state (native S3 locking)
 │   ├── main.tf                # EKS cluster (official module) + platform node group + Karpenter IAM/queue
 │   └── backend.hcl.example    # S3 backend template (copy to backend.hcl, gitignored)
+├── apps/
+│   └── rag/                   # RAG service (Python): ingestion + /ask API, Dockerfile, unit tests
 ├── k8s/
 │   ├── vllm/                  # Deployment (GPU) + local-cpu-mock (Ollama) + Service + KEDA ScaledObject
 │   ├── litellm/                # Gateway: Deployment + ConfigMap (real vs. local) (routing/rate limits)
 │   ├── qdrant/                  # Vector DB for RAG (Helm values)
+│   ├── rag/                    # RAG ingestion Job (Argo CD Sync hook) + API Deployment
 │   ├── argocd/                 # Argo CD: install values, root app-of-apps, one Application per component
 │   ├── storage/                # Default gp3 StorageClass (EKS ships none)
 │   ├── karpenter/              # NodePools + EC2NodeClasses: GPU nodes from 0, platform overflow
 │   ├── security/                # Kyverno policies + Trivy-operator config
 │   └── observability/         # kube-prometheus-stack values + ServiceMonitors (cost/latency)
-├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform
-│                               # (no build/push: no custom image, Argo CD syncs main directly)
+├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform,
+│                               # RAG image (tests, build, Trivy, push + keyless cosign signing on main)
 ├── docs/
 │   └── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
 └── scripts/
@@ -105,8 +108,8 @@ llm-platform-on-eks/
 ## Getting started (recommended order)
 
 1. `scripts/deploy-local.sh` — spins up a local kind cluster, installs Prometheus/Grafana,
-   Kyverno, Qdrant, and a CPU inference mock (Ollama) to test the gateway, RAG, and
-   security policies without spending on GPU.
+   Kyverno, Qdrant, a CPU inference mock (Ollama) and the RAG service (built locally) to
+   test the gateway, RAG, and security policies without spending on GPU.
 2. Once the logic works locally:
    a. `cd terraform/bootstrap && terraform init && terraform apply` — creates the S3
       bucket for remote state (done once).
@@ -143,7 +146,6 @@ Known gaps:
 - The platform NodePool's AZ-aware launches (for Qdrant/Grafana volumes
   stranded by a spot interruption) haven't been exercised on EKS yet.
 - The `kyverno` Application shows OutOfSync on its policy CRDs.
-- `require-image-signature.yaml` ships in `Audit` mode with placeholder
-  registry/key values — only relevant once a custom-built image exists (see
-  `k8s/security/kyverno-policies/require-image-signature.yaml`).
-- OpenCost (infra-side cost) and the RAG ingestion pipeline aren't installed yet.
+- The RAG service is validated locally; its signed image and the Enforce
+  signature policy haven't run on EKS yet.
+- OpenCost (infra-side cost) isn't installed yet.
