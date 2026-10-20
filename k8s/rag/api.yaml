@@ -1,0 +1,90 @@
+# RAG API (apps/rag/rag/api.py): retrieves from Qdrant and answers through
+# the LiteLLM gateway. Image built, scanned and signed by CI; the cluster
+# only admits it with a valid signature (require-image-signature.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+  namespace: llm-platform
+  labels:
+    app: rag-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-api
+  template:
+    metadata:
+      labels:
+        app: rag-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rag-api
+          # Tag must match apps/rag/VERSION (checked in CI).
+          image: ghcr.io/yack300/llm-platform-rag:0.1.0
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: QDRANT_URL
+              value: http://qdrant.llm-platform.svc.cluster.local:6333
+            - name: LITELLM_URL
+              value: http://litellm-gateway.llm-platform.svc.cluster.local:4000/v1
+            # The gateway's master key, from the Secret bootstrap creates. A
+            # per-app LiteLLM virtual key would be better, but needs LiteLLM's
+            # database, which this platform doesn't run.
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: LITELLM_MASTER_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # ~350 MiB resident with the embedding model loaded.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api
+  namespace: llm-platform
+  labels:
+    app: rag-api # matched by the ServiceMonitor in k8s/observability/servicemonitors.yaml
+spec:
+  selector:
+    app: rag-api
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http

@@ -47,3 +47,24 @@ spec:
       targetPort: 4000
       path: /metrics
       interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rag-api
+  namespace: llm-platform
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: rag-api
+  namespaceSelector:
+    matchNames:
+      - llm-platform
+  endpoints:
+    # rag_requests_total by outcome and rag_stage_seconds (embed, retrieve,
+    # generate), from prometheus_client in apps/rag/rag/api.py.
+    - port: http
+      path: /metrics/
+      interval: 30s

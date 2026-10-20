@@ -23,9 +23,7 @@ service:
   type: ClusterIP
   port: 6333
 
-# TODO: once deployed, the ingestion pipeline (outside this K8s repo, lives
-# in a separate script/notebook) does:
-#   1. Document chunking
-#   2. Embeddings (e.g. sentence-transformers, or via LiteLLM if the model supports it)
-#   3. Upsert into the Qdrant collection
-#   4. The RAG endpoint in LiteLLM/app does retrieval + prompts the model
+# Filled by the RAG ingestion Job (k8s/rag/ingest-job.yaml, code in
+# apps/rag/): the project's docs, chunked and embedded, into a versioned
+# collection behind the `platform-docs` alias; the RAG API (k8s/rag/api.yaml)
+# queries it and answers through LiteLLM.

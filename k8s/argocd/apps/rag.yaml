@@ -1,0 +1,28 @@
+# RAG ingestion Job + API (k8s/rag/). Wave 3: needs Qdrant (wave 1) and the
+# LiteLLM gateway and its Secret (wave 2).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rag
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  # Deleting this Application also deletes everything it deployed, which is
+  # what teardown relies on (see scripts/teardown-eks.sh).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-platform
+  source:
+    repoURL: https://github.com/yack300/llm-platform-on-eks.git
+    targetRevision: main
+    path: k8s/rag
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

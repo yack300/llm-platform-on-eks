@@ -1,0 +1,57 @@
+# Indexes the project's docs (baked into the image) into Qdrant. Builds a new
+# collection and atomically repoints the `platform-docs` alias, so the API
+# keeps serving the previous index until this one is complete.
+#
+# A Job's pod template is immutable, so Argo CD runs it as a Sync hook:
+# recreated (BeforeHookCreation) on every sync of this app, which happens
+# when k8s/rag/ changes in Git, e.g. a new image version.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rag-ingest
+  namespace: llm-platform
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3 # Qdrant may still be starting on a fresh cluster
+  template:
+    metadata:
+      labels:
+        app: rag-ingest
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ingest
+          # Same image and tag as the API (apps/rag/VERSION).
+          image: ghcr.io/yack300/llm-platform-rag:0.1.0
+          command: ["python", "-m", "rag.ingest"]
+          env:
+            - name: QDRANT_URL
+              value: http://qdrant.llm-platform.svc.cluster.local:6333
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # Embedding on CPU is the slow part (~1 s per chunk per core), and
+          # the Job is short-lived: let it burst to 2 CPUs. The code sizes its
+          # threads from this limit (rag/embeddings.py cpu_limit).
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: "2"
+              memory: 768Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
