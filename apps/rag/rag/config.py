@@ -21,6 +21,9 @@ class Settings:
     # Seconds. The local CPU mock can take over a minute for a RAG-sized
     # prompt on a busy laptop.
     llm_timeout: float = float(os.environ.get("LLM_TIMEOUT", "120"))
+    # Chunks embedded per ONNX call. Memory grows with it: peak 834 MiB at 32
+    # (OOMKilled under the Job's 768 MiB limit on EKS), 452 MiB at 8.
+    embed_batch: int = int(os.environ.get("EMBED_BATCH", "8"))
     chunk_size: int = int(os.environ.get("CHUNK_SIZE", "1000"))
     chunk_overlap: int = int(os.environ.get("CHUNK_OVERLAP", "150"))
 

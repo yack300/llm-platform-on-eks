@@ -26,7 +26,7 @@ spec:
       containers:
         - name: rag-api
           # Tag must match apps/rag/VERSION (checked in CI).
-          image: ghcr.io/yack300/llm-platform-rag:0.1.0
+          image: ghcr.io/yack300/llm-platform-rag:0.1.1
           ports:
             - containerPort: 8080
               name: http

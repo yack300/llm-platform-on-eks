@@ -15,7 +15,6 @@ from .chunking import chunk_document
 from .config import settings
 
 log = logging.getLogger("rag.ingest")
-BATCH = 32
 
 
 def load_chunks(corpus_dir: str):
@@ -42,8 +41,8 @@ def main() -> None:
     store.wait_until_ready(c)
     collection = store.create_version(c, embeddings.dimension())
 
-    for i in range(0, len(chunks), BATCH):
-        batch = chunks[i:i + BATCH]
+    for i in range(0, len(chunks), settings.embed_batch):
+        batch = chunks[i:i + settings.embed_batch]
         store.upsert(c, collection, batch, embeddings.embed([ch.text for ch in batch]))
 
     removed = store.publish(c, collection)
