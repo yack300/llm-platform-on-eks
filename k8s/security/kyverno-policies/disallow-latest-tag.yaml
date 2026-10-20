@@ -27,7 +27,9 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ images.containers.{{element.name}}.tag }}"
+                  # Quoted: an unquoted container name with a hyphen
+                  # (rag-api) is a JMESPath syntax error, not a match.
+                  - key: '{{ images.containers."{{element.name}}".tag }}'
                     operator: Equals
                     value: "latest"
     - name: validate-image-tag
