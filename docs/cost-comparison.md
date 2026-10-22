@@ -274,6 +274,21 @@ Bugs found on this run:
   (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change
   needed a manual rollout restart.
 
+What this run cost (Cost Explorer; ~2 hours of cluster time, three image
+releases, ~45 minutes of GPU):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU node) | $0.66 |
+| EKS control plane | $0.16 |
+| EC2 other (EBS volumes, data transfer) | $0.16 |
+| KMS (includes a key not created by this project) | $0.07 |
+| VPC (public IPv4 addresses) | $0.02 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$1.07** |
+
+All four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**.
+
 ## What the whole session cost
 
 The full AWS bill for the day (Cost Explorer), from `terraform apply` through
