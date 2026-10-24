@@ -34,6 +34,10 @@ through the LiteLLM gateway. Full numbers, method and caveats in
   300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS
   managed node group, which drops the initialization rate. Details in
   [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-works).
+- **RAG retrieval measured in CI** on 30 questions with known answers:
+  switching to a multilingual embedding model took hit@4 from 0.70 to 0.90
+  (Spanish 0.40 -> 0.80) for ~0.5 GiB more memory; CI fails the image if it
+  drops below the baseline. Details in [docs/retrieval-eval.md](docs/retrieval-eval.md).
 - **Same GPU, ~6.8x the throughput** going from 1 to 8 concurrent requests,
   with p50 latency only going from 2.5 s to 3 s (vLLM continuous batching).
 - **Bugs that only showed up on real infrastructure**, fixed in this repo:
@@ -96,9 +100,10 @@ llm-platform-on-eks/
 │   ├── security/                # Kyverno policies + Trivy-operator config
 │   └── observability/         # kube-prometheus-stack values + ServiceMonitors (cost/latency)
 ├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform,
-│                               # RAG image (tests, build, Trivy, push + keyless cosign signing on main)
+│                               # RAG image (tests, build, retrieval eval, Trivy, push + keyless cosign signing on main)
 ├── docs/
-│   └── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
+│   ├── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
+│   └── retrieval-eval.md       # RAG retrieval metrics, embedding model comparison, CI baseline
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
@@ -150,9 +155,9 @@ Known gaps:
 - The platform NodePool's AZ-aware launches (for Qdrant/Grafana volumes
   stranded by a spot interruption) haven't been exercised on EKS yet.
 - The `kyverno` Application shows OutOfSync on its policy CRDs.
-- RAG answers are right on 4 of 6 test questions (fourth run, see
-  docs/cost-comparison.md); there's no automated evaluation yet, and the
-  embedding model is English-only.
+- RAG evaluation covers retrieval only (docs/retrieval-eval.md), not answer
+  quality; there's no similarity threshold for off-topic questions yet, and
+  the embeddinggemma model (0.2.0) hasn't run on EKS yet.
 - LiteLLM doesn't restart on a ConfigMap change (no config checksum on its
   Deployment); a failing ingestion Sync hook blocks newer revisions until the
   sync is terminated.

@@ -1,0 +1,9 @@
+{
+  "note": "Minimums CI enforces (python -m rag.evaluate --baseline). Measured with google/embeddinggemma-300m and task prefixes on 2026-10-24: all hit@k 0.90, mrr 0.672; en hit@k 0.92; es hit@k 0.80. Each minimum allows one question to slip, since the corpus is the docs and every doc change re-ranks a little; raise them when retrieval improves. See docs/retrieval-eval.md.",
+  "min": {
+    "all.hit@k": 0.85,
+    "all.mrr": 0.63,
+    "en.hit@k": 0.88,
+    "es.hit@k": 0.6
+  }
+}

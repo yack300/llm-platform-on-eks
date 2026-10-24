@@ -61,6 +61,8 @@ docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 app
 # RAG unit tests (no model or Qdrant needed) and image build (from the repo root)
 docker run --rm -v "$PWD/apps/rag":/app -w /app python:3.12.15-slim sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q tests'
 docker build -f apps/rag/Dockerfile -t llm-platform-rag:dev .
+# Retrieval evaluation of that image (CI runs it with the baseline; docs/retrieval-eval.md)
+docker run --rm -v "$PWD/apps/rag/eval":/eval:ro llm-platform-rag:dev python -m rag.evaluate --questions /eval/questions.yaml --baseline /eval/baseline.json
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
@@ -200,7 +202,8 @@ wakes on the next request).
 **CI gates main; Argo CD deploys.** `.github/workflows/ci.yml` runs scans (Checkov,
 Trivy fs, GitLeaks) and, once they pass, validation (kubeconform and `kyverno apply`
 against `k8s/`, `terraform validate`/`fmt`) plus the `rag-image` job: unit tests, a
-check that `k8s/rag/` uses the tag in `apps/rag/VERSION`, build, Trivy image scan, and
+check that `k8s/rag/` uses the tag in `apps/rag/VERSION`, build, retrieval evaluation
+against `apps/rag/eval/baseline.json`, Trivy image scan, and
 on main only, push to GHCR and keyless `cosign sign`. There's no deploy step: Argo CD
 syncs from `main`. Image tags are immutable: to release RAG changes, bump
 `apps/rag/VERSION` and the tags in `k8s/rag/` in the same commit (CI skips pushing a
@@ -220,6 +223,12 @@ immutable); `require-image-signature.yaml` admits `ghcr.io/yack300/*` only with 
 signature from this repo's ci.yml on main. Locally, `deploy-local.sh` builds the image
 as `llm-platform-rag:dev` and loads it into kind, a name that policy doesn't match.
 Prompts go as a single user message: Mistral's chat template rejects a system role.
+The embedding model is `google/embeddinggemma-300m` with task prefixes
+(`QUERY_PREFIX`/`DOCUMENT_PREFIX`), chosen over bge-small-en with `rag.evaluate`
+(docs/retrieval-eval.md): ~850 MiB resident, hence the 1.5 GiB limits in `k8s/rag/`.
+Changing the model, prefixes, chunking or the docs themselves changes retrieval, and CI
+fails the image below `apps/rag/eval/baseline.json`; a doc edit that removes a
+question's `evidence` text fails it too (update `eval/questions.yaml`).
 Embedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the
 ingestion hook keeps failing, Argo CD stays on that revision until the sync operation
 is terminated. LiteLLM's ConfigMap (incl. `drop_params: true`, needed because

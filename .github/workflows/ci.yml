@@ -156,6 +156,25 @@ jobs:
       - name: Build
         run: docker build -f apps/rag/Dockerfile -t "$RAG_IMAGE:$VERSION" .
 
+      # Retrieval quality of the image about to ship (its model, chunking and
+      # docs), against apps/rag/eval/: in-memory Qdrant, no model calls, so
+      # deterministic and free. Fails below eval/baseline.json.
+      - name: Retrieval evaluation
+        shell: bash
+        run: |
+          # The table goes to the log and the job summary; pipefail (bash on
+          # Actions) keeps the evaluator's exit code through tee.
+          status=0
+          {
+            echo '### Retrieval evaluation'
+            echo '```'
+            docker run --rm -v "$PWD/apps/rag/eval":/eval:ro "$RAG_IMAGE:$VERSION" \
+              python -m rag.evaluate --questions /eval/questions.yaml --baseline /eval/baseline.json 2>&1 \
+              | tee /dev/stderr || status=$?
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
       # Image vulnerabilities (OS packages and Python dependencies).
       - name: Scan the image
         run: >-
