@@ -11,7 +11,7 @@ ARG PYTHON=python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c6032695
 
 FROM ${PYTHON} AS build
 # Must match EMBEDDING_MODEL in rag/config.py.
-ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+ARG EMBEDDING_MODEL=google/embeddinggemma-300m
 COPY apps/rag/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --root-user-action=ignore --prefix=/install -r /tmp/requirements.txt
 # Bake the embedding model in, so pods never download it at startup.

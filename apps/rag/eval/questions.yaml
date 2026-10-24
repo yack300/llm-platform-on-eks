@@ -1,0 +1,140 @@
+# Retrieval evaluation set for the RAG service (python -m rag.evaluate).
+#
+# Each answerable question lists `evidence`: text that must appear in one of
+# the retrieved chunks for retrieval to count as a hit (any of them,
+# case-insensitive). Evidence is matched against chunk text rather than chunk
+# ids, so changing the chunking doesn't invalidate the set; the evaluator
+# fails if an evidence string no longer exists anywhere in the corpus (the
+# docs changed and the set needs updating).
+#
+# `answerable: false` questions have no answer in the docs. They're scored
+# on similarity only, to calibrate a threshold below which the API shouldn't
+# bother calling the model.
+#
+# Started from the questions asked on the fourth EKS run (2026-10-20).
+questions:
+  # --- Platform facts ---
+  - id: k8s-version
+    question: Which Kubernetes version does the EKS cluster run?
+    evidence: ["EKS 1.36"]
+  - id: gpu-instance
+    question: Which GPU instance type serves the model?
+    evidence: ["g4dn.xlarge"]
+  - id: served-model
+    question: Which model does vLLM serve?
+    evidence: ["Mistral-7B"]
+  - id: state-locking
+    question: How is the Terraform state locked?
+    evidence: ["use_lockfile"]
+  - id: no-nat
+    question: Why don't the nodes need a NAT Gateway?
+    evidence: ["NAT Gateway"]
+  - id: api-access
+    question: Who can reach the public EKS API endpoint?
+    evidence: ["admin_cidrs"]
+  - id: before-destroy
+    question: What has to run before terraform destroy, and why?
+    evidence: ["teardown-eks.sh"]
+
+  # --- Scale-to-zero ---
+  - id: keda-wake
+    question: How does the platform wake vLLM up from zero replicas?
+    evidence: ["gateway-demand"]
+  - id: vllm-metric-cant-wake
+    question: Why can't a vLLM metric wake vLLM from zero?
+    evidence: ["nothing publishes the metric"]
+  - id: startup-trigger-terminating
+    question: Why does the startup trigger exclude terminating pods?
+    evidence: ["terminating pod"]
+  - id: node-removal
+    question: How long does it take to remove an idle GPU node with Karpenter?
+    evidence: ["~12 minutes in total"]
+  - id: spot-fallback
+    question: What happens when there is no spot GPU capacity?
+    evidence: ["UnfulfillableCapacity"]
+
+  # --- Cold start ---
+  - id: cold-start-karpenter
+    question: How long does a cold start take with Karpenter and the image cache?
+    evidence: ["~5-6"]
+  - id: snapshot-slower
+    question: Why did the EBS snapshot make the cold start slower?
+    evidence: ["first time it's read"]
+  - id: init-rate-dropped
+    question: Why didn't the volume initialization rate work with EKS managed node groups?
+    evidence: ["drop `VolumeInitializationRate`"]
+
+  # --- Performance and cost ---
+  - id: throughput-8
+    question: What throughput does vLLM reach with 8 concurrent requests?
+    evidence: ["342"]
+  - id: ttft
+    question: What is the time to first token when vLLM is warm?
+    evidence: ["0.31 s"]
+  - id: total-cost
+    question: What did all the EKS runs cost in total?
+    evidence: ["$6.12"]
+  - id: second-run-cost
+    question: What did the second EKS session cost?
+    evidence: ["$1.45"]
+
+  # --- RAG and supply chain ---
+  - id: image-signature
+    question: How does the cluster make sure the RAG image comes from CI?
+    evidence: ["require-image-signature"]
+  - id: cosign-v2
+    question: Why does CI use cosign v2 instead of v3?
+    evidence: ["OCI referrers"]
+  - id: alias-swap
+    question: How does ingestion avoid serving a half-built index?
+    evidence: ["repoints the `platform-docs` alias"]
+  - id: single-user-message
+    question: Why is the prompt sent as a single user message?
+    evidence: ["system role", "system message"]
+  - id: ingest-oom
+    question: Why was the ingestion Job OOMKilled?
+    evidence: ["834 MiB"]
+  - id: drop-params
+    question: Why does LiteLLM drop unsupported parameters?
+    evidence: ["drop_params"]
+
+  # --- Spanish (the embedding model may be English-only) ---
+  - id: es-k8s-version
+    question: ¿Qué versión de Kubernetes usa el clúster de EKS?
+    lang: es
+    evidence: ["EKS 1.36"]
+  - id: es-cold-start
+    question: ¿Cuánto tarda el arranque en frío con Karpenter y la caché de la imagen?
+    lang: es
+    evidence: ["~5-6"]
+  - id: es-total-cost
+    question: ¿Cuánto costaron en total las sesiones en EKS?
+    lang: es
+    evidence: ["$6.12"]
+  - id: es-snapshot
+    question: ¿Por qué el snapshot de EBS hizo más lento el arranque en frío?
+    lang: es
+    evidence: ["first time it's read"]
+  - id: es-keda-wake
+    question: ¿Cómo despierta la plataforma a vLLM desde cero réplicas?
+    lang: es
+    evidence: ["gateway-demand"]
+
+  # --- No answer in the docs ---
+  - id: off-capital
+    question: What is the capital of France?
+    answerable: false
+  - id: off-date
+    question: ¿Cuál es la fecha de hoy?
+    lang: es
+    answerable: false
+  - id: off-cake
+    question: How do I bake a chocolate cake?
+    answerable: false
+  - id: off-nvidia-stock
+    question: What is NVIDIA's stock price today?
+    answerable: false
+  - id: off-worldcup
+    question: ¿Quién ganó el mundial de fútbol de 2022?
+    lang: es
+    answerable: false

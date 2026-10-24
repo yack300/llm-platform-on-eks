@@ -26,7 +26,7 @@ spec:
       containers:
         - name: rag-api
           # Tag must match apps/rag/VERSION (checked in CI).
-          image: ghcr.io/yack300/llm-platform-rag:0.1.2
+          image: ghcr.io/yack300/llm-platform-rag:0.2.0
           ports:
             - containerPort: 8080
               name: http
@@ -48,14 +48,14 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-          # ~350 MiB resident with the embedding model loaded.
+          # ~850 MiB resident with embeddinggemma loaded (docs/retrieval-eval.md).
           resources:
             requests:
               cpu: 100m
-              memory: 384Mi
+              memory: 1Gi
             limits:
               cpu: "1"
-              memory: 768Mi
+              memory: 1536Mi
           readinessProbe:
             httpGet:
               path: /healthz

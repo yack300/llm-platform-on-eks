@@ -52,7 +52,7 @@ def healthz() -> dict:
 @app.post("/ask")
 def ask(body: Ask) -> dict:
     t = time.perf_counter()
-    vector = embeddings.embed([body.question])[0]
+    vector = embeddings.embed_query(body.question)
     STAGE_SECONDS.labels("embed").observe(time.perf_counter() - t)
 
     t = time.perf_counter()

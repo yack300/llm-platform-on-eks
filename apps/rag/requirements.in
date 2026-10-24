@@ -6,3 +6,5 @@ qdrant-client==1.19.1
 fastembed==0.9.0
 httpx==0.28.1
 prometheus-client==0.26.0
+# rag.evaluate reads eval/questions.yaml (already in the lock via huggingface-hub).
+PyYAML==6.0.3

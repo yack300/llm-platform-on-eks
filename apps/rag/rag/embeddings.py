@@ -42,7 +42,14 @@ def _model() -> TextEmbedding:
 
 
 def embed(texts: list[str]) -> list[list[float]]:
+    """Documents (chunks) to index."""
+    texts = [settings.document_prefix + t for t in texts]
     return [vector.tolist() for vector in _model().embed(texts)]
+
+
+def embed_query(text: str) -> list[float]:
+    """A search query."""
+    return next(iter(_model().embed([settings.query_prefix + text]))).tolist()
 
 
 def dimension() -> int:
