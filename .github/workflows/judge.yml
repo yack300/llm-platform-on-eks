@@ -1,0 +1,50 @@
+# Answer-quality judge for the RAG service (apps/rag/eval/judge/), run by
+# hand: it calls Claude (cents per run, needs the ANTHROPIC_API_KEY secret)
+# and isn't deterministic, so it doesn't gate pushes the way the retrieval
+# evaluation in ci.yml does. It grades an answers file committed from a
+# cluster session (rag.answers), or calibration.json to check the judge.
+name: Judge RAG answers
+
+on:
+  workflow_dispatch:
+    inputs:
+      answers:
+        description: Answers file, relative to apps/rag/eval/
+        default: judge/calibration.json
+
+permissions:
+  contents: read
+
+env:
+  PROMPTFOO_IMAGE: ghcr.io/promptfoo/promptfoo:0.125.1
+
+jobs:
+  judge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Judge
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANSWERS: ${{ inputs.answers }}
+        run: |
+          # promptfoo exits 100 when an answer fails a check: that's the
+          # result being measured, not a broken run.
+          status=0
+          # The runner's uid, to write results.json into the checkout.
+          docker run --rm --user "$(id -u)" -v "$PWD/apps/rag/eval":/eval -w /eval/judge \
+            -e ANSWERS="/eval/$ANSWERS" -e ANTHROPIC_API_KEY \
+            -e HOME=/tmp -e PROMPTFOO_DISABLE_TELEMETRY=1 --entrypoint promptfoo \
+            "$PROMPTFOO_IMAGE" eval --no-cache -o /eval/judge/results.json || status=$?
+          [ "$status" -eq 0 ] || [ "$status" -eq 100 ]
+
+      # Fails on calibration.json if the judge disagrees with an expected verdict.
+      - name: Summary
+        run: |
+          { echo "### $ANSWERS"; python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json; } \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+        shell: bash
+        env:
+          ANSWERS: ${{ inputs.answers }}

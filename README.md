@@ -103,7 +103,7 @@ llm-platform-on-eks/
 │                               # RAG image (tests, build, retrieval eval, Trivy, push + keyless cosign signing on main)
 ├── docs/
 │   ├── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
-│   └── retrieval-eval.md       # RAG retrieval metrics, embedding model comparison, CI baseline
+│   └── retrieval-eval.md       # RAG retrieval metrics + CI baseline, answer quality judged by Claude
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
@@ -155,9 +155,10 @@ Known gaps:
 - The platform NodePool's AZ-aware launches (for Qdrant/Grafana volumes
   stranded by a spot interruption) haven't been exercised on EKS yet.
 - The `kyverno` Application shows OutOfSync on its policy CRDs.
-- RAG evaluation covers retrieval only (docs/retrieval-eval.md), not answer
-  quality; there's no similarity threshold for off-topic questions yet, and
-  the embeddinggemma model (0.2.0) hasn't run on EKS yet.
+- RAG answer quality is graded by Claude (docs/retrieval-eval.md), but not
+  yet on Mistral's answers: that needs an EKS session, as does the
+  embeddinggemma model (0.2.0+). There's no similarity threshold for
+  off-topic questions yet.
 - LiteLLM doesn't restart on a ConfigMap change (no config checksum on its
   Deployment); a failing ingestion Sync hook blocks newer revisions until the
   sync is terminated.

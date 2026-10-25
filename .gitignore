@@ -14,3 +14,6 @@ terraform/backend.hcl
 # Claude Code local settings (machine-specific, not project config)
 .claude/settings.local.json
 __pycache__/
+
+# promptfoo output of the RAG answer judge (apps/rag/eval/judge/)
+apps/rag/eval/judge/results.json

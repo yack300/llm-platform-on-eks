@@ -63,6 +63,12 @@ docker run --rm -v "$PWD/apps/rag":/app -w /app python:3.12.15-slim sh -c 'pip i
 docker build -f apps/rag/Dockerfile -t llm-platform-rag:dev .
 # Retrieval evaluation of that image (CI runs it with the baseline; docs/retrieval-eval.md)
 docker run --rm -v "$PWD/apps/rag/eval":/eval:ro llm-platform-rag:dev python -m rag.evaluate --questions /eval/questions.yaml --baseline /eval/baseline.json
+# Answer quality, judged by Claude (needs ANTHROPIC_API_KEY; costs cents). Answers come
+# from a cluster: kubectl -n llm-platform exec -i deploy/rag-api -- python -m rag.answers
+#   < apps/rag/eval/questions.yaml > apps/rag/eval/answers/<date>.json
+# ANSWERS=/eval/judge/calibration.json checks the judge itself against known verdicts.
+docker run --rm -v "$PWD/apps/rag/eval":/eval -w /eval/judge -e ANSWERS=/eval/answers/<date>.json -e ANTHROPIC_API_KEY -e HOME=/tmp -e PROMPTFOO_DISABLE_TELEMETRY=1 --entrypoint promptfoo ghcr.io/promptfoo/promptfoo:0.125.1 eval --no-cache -o /eval/judge/results.json
+python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
@@ -228,7 +234,10 @@ The embedding model is `google/embeddinggemma-300m` with task prefixes
 (docs/retrieval-eval.md): ~850 MiB resident, hence the 1.5 GiB limits in `k8s/rag/`.
 Changing the model, prefixes, chunking or the docs themselves changes retrieval, and CI
 fails the image below `apps/rag/eval/baseline.json`; a doc edit that removes a
-question's `evidence` text fails it too (update `eval/questions.yaml`).
+question's `evidence` text fails it too (update `eval/questions.yaml`). Answer quality is a separate,
+manual step (`.github/workflows/judge.yml`, Claude as judge via promptfoo), not a CI gate:
+it costs money and isn't deterministic. Keep `judge/calibration.json` passing when
+changing the rubrics in `judge/tests.js`.
 Embedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the
 ingestion hook keeps failing, Argo CD stays on that revision until the sync operation
 is terminated. LiteLLM's ConfigMap (incl. `drop_params: true`, needed because

@@ -1,0 +1,125 @@
+{
+  "date": "calibration",
+  "top_k": 1,
+  "answers": [
+    {
+      "id": "cal-correct",
+      "lang": "en",
+      "answerable": true,
+      "question": "How long does a cold start take with Karpenter and the image cache?",
+      "reference": "About 5-6 minutes, down from ~10-11 without the image cache.",
+      "answer": "With Karpenter and the EBS image cache, a cold start takes about 5-6 minutes, down from 10-11 [1].",
+      "model": "calibration",
+      "seconds": 0,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.6,
+          "text": "ler adds\n  a GPU node from 0 → first local response in ~8–9 min (mostly the 8.7 GB\n  image pull). Idle, vLLM is back at 0 in ~5 min and the GPU node is gone in ~18 min.\n- **The whole validation session cost $1.48** (before tax): apply, benchmark,\n  scale-to-zero test and teardown, ~2 hours of cluster time.\n- **Time to first token ~0.3-0.4 s** warm (second run), for full answers of\n  ~2.7-3.3 s.\n- **Cold start cut from ~10-11 to ~5-6 minutes** (third run): GPU nodes from\n  Karpenter, with the vLLM image pre-pulled on an EBS snapshot initialized at\n  300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS\n  managed node group, which drops the initialization rate. Details in\n  [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-w"
+        }
+      ],
+      "expect": {
+        "correct": true,
+        "faithful": true,
+        "language": true
+      }
+    },
+    {
+      "id": "cal-invented",
+      "lang": "en",
+      "answerable": true,
+      "question": "How long does a cold start take with Karpenter and the image cache?",
+      "reference": "About 5-6 minutes, down from ~10-11 without the image cache.",
+      "answer": "About 5-6 minutes [1]. It's that fast because the model weights are streamed from S3 with Run:ai Model Streamer and vLLM skips CUDA graph capture.",
+      "model": "calibration",
+      "seconds": 0,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.6,
+          "text": "ler adds\n  a GPU node from 0 → first local response in ~8–9 min (mostly the 8.7 GB\n  image pull). Idle, vLLM is back at 0 in ~5 min and the GPU node is gone in ~18 min.\n- **The whole validation session cost $1.48** (before tax): apply, benchmark,\n  scale-to-zero test and teardown, ~2 hours of cluster time.\n- **Time to first token ~0.3-0.4 s** warm (second run), for full answers of\n  ~2.7-3.3 s.\n- **Cold start cut from ~10-11 to ~5-6 minutes** (third run): GPU nodes from\n  Karpenter, with the vLLM image pre-pulled on an EBS snapshot initialized at\n  300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS\n  managed node group, which drops the initialization rate. Details in\n  [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-w"
+        }
+      ],
+      "expect": {
+        "correct": true,
+        "faithful": false,
+        "language": true
+      }
+    },
+    {
+      "id": "cal-wrong-number",
+      "lang": "en",
+      "answerable": true,
+      "question": "What did all the EKS runs cost in total?",
+      "reference": "$6.12 for all four EKS runs ($1.48 + $1.45 + $2.12 + $1.07).",
+      "answer": "All the EKS runs together cost $16.12 [1].",
+      "model": "calibration",
+      "seconds": 0,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.6,
+          "text": "cluster time, three image\nreleases, ~45 minutes of GPU):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node) | $0.66 |\n| EKS control plane | $0.16 |\n| EC2 other (EBS volumes, data transfer) | $0.16 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.02 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.07** |\n\nAll four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**.\n\n## What the whole session cost\n\nThe full AWS bill for the day (Cost Explorer), from `terraform apply` through\nthe benchmark, the scale-to-zero test and the teardown, ~2 hours of cluster time:\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes + GPU node) | $0.61 |\n| EC2 other (EBS volumes) | $0.33 |\n| KMS (includes a ke"
+        }
+      ],
+      "expect": {
+        "correct": false,
+        "faithful": false,
+        "language": true
+      }
+    },
+    {
+      "id": "cal-wrong-language",
+      "lang": "es",
+      "answerable": true,
+      "question": "¿Cuánto costaron en total las sesiones en EKS?",
+      "reference": "$6.12 en total por las cuatro sesiones en EKS.",
+      "answer": "All four EKS runs cost $6.12 in total [1].",
+      "model": "calibration",
+      "seconds": 0,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.6,
+          "text": "cluster time, three image\nreleases, ~45 minutes of GPU):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node) | $0.66 |\n| EKS control plane | $0.16 |\n| EC2 other (EBS volumes, data transfer) | $0.16 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.02 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.07** |\n\nAll four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**.\n\n## What the whole session cost\n\nThe full AWS bill for the day (Cost Explorer), from `terraform apply` through\nthe benchmark, the scale-to-zero test and the teardown, ~2 hours of cluster time:\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes + GPU node) | $0.61 |\n| EC2 other (EBS volumes) | $0.33 |\n| KMS (includes a ke"
+        }
+      ],
+      "expect": {
+        "correct": true,
+        "faithful": true,
+        "language": false
+      }
+    },
+    {
+      "id": "cal-declines",
+      "lang": "en",
+      "answerable": false,
+      "question": "What is the capital of France?",
+      "reference": "",
+      "answer": "I don't know: the provided context doesn't cover that.",
+      "model": "calibration",
+      "seconds": 0,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "README.md",
+          "heading": "Getting started (recommended order)",
+          "score": 0.6,
+          "text": "gs\n│   └── retrieval-eval.md       # RAG retrieval metrics, embedding model comparison, CI baseline\n└── scripts/\n    ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)\n    ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app\n    └── teardown-eks.sh         # EKS: delete apps and PVC volumes before terraform destroy\n```\n\n## Getting started (recommended order)\n\n1. `scripts/deploy-local.sh` — spins up a local kind cluster, installs Prometheus/Grafana,\n   Kyverno, Qdrant, a CPU inference mock (Ollama) and the RAG service (built locally) to\n   test the gateway, RAG, and security policies without spending on GPU.\n2. Once the logic works locally:\n   a. `cd terraform/bootstrap && terraform init && terraform apply` — crea"
+        }
+      ],
+      "expect": {
+        "declines": true,
+        "language": true
+      }
+    }
+  ]
+}

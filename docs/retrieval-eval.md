@@ -123,3 +123,48 @@ docker run --rm -v "$PWD/apps/rag/eval":/eval:ro llm-platform-rag:dev \
 `CHUNK_OVERLAP` are environment variables, so a candidate configuration can
 be evaluated without code changes (a model other than the baked one needs
 its cache mounted at `/models`, or `HF_HUB_OFFLINE=0` to download it).
+
+## Answer quality: Claude as judge
+
+Retrieval only says the right passage reached the model. Whether the answer
+is right is graded by a second model, in two steps, because the model being
+judged (Mistral-7B on vLLM) only exists while the EKS cluster is up:
+
+1. **Generate**, on a cluster: `rag.answers` runs inside the rag-api pod,
+   asks every question through `/ask` with `include_context` and writes each
+   answer with the passages it was given and the model that produced it
+   (answers from `claude-fallback`, while vLLM cold-starts, are labeled as
+   such). The file is committed under `apps/rag/eval/answers/`.
+
+   ```bash
+   kubectl -n llm-platform exec -i deploy/rag-api -- python -m rag.answers \
+     < apps/rag/eval/questions.yaml > apps/rag/eval/answers/<date>.json
+   ```
+
+2. **Judge**, anywhere: promptfoo (`apps/rag/eval/judge/`) grades the file
+   with `claude-sonnet-5`, locally in Docker or with the manual
+   *Judge RAG answers* workflow (`judge.yml`, `ANTHROPIC_API_KEY` secret).
+   Not on every push: it costs money and isn't deterministic.
+
+Checks, each pass/fail with the judge's reason:
+
+| Check | Questions | Passes when |
+|---|---|---|
+| correct | answerable | it agrees with the question's `reference` answer |
+| faithful | answerable | every claim is in the passages the model was given |
+| declines | unanswerable | it says it doesn't know instead of answering from general knowledge |
+| language | all | it's in the question's language |
+
+`summary.py` reports the pass rate per check by language and by answering
+model, and lists every failure with the judge's reason.
+
+**Calibrating the judge.** `judge/calibration.json` holds five hand-written
+answers with known verdicts: a correct one, one that adds an invented
+mechanism, one with a wrong number, an English answer to a Spanish question,
+and a correct refusal. A judge that disagrees with any of the 14 expected
+verdicts fails the summary. promptfoo's built-in `context-faithfulness`
+failed this: it splits an answer into statements and averages them, and the
+correct 2-sentence answer scored between 0.33 and 0.75 across runs (threshold
+0.8), with no reason given. A pass/fail rubric that has to name the
+unsupported claim agreed on 14 of 14, on two consecutive runs. A calibration
+run is 10 judge calls, ~12k tokens.

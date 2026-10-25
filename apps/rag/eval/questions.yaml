@@ -7,9 +7,12 @@
 # fails if an evidence string no longer exists anywhere in the corpus (the
 # docs changed and the set needs updating).
 #
-# `answerable: false` questions have no answer in the docs. They're scored
-# on similarity only, to calibrate a threshold below which the API shouldn't
-# bother calling the model.
+# `reference` is a short correct answer, written from the docs, for the
+# answer-quality judge (eval/judge/); retrieval scoring doesn't use it.
+#
+# `answerable: false` questions have no answer in the docs. Retrieval scores
+# them on similarity only, to calibrate a threshold below which the API
+# shouldn't bother calling the model; the judge checks the answer declines.
 #
 # Started from the questions asked on the fourth EKS run (2026-10-20).
 questions:
@@ -17,108 +20,138 @@ questions:
   - id: k8s-version
     question: Which Kubernetes version does the EKS cluster run?
     evidence: ["EKS 1.36"]
+    reference: "EKS 1.36."
   - id: gpu-instance
     question: Which GPU instance type serves the model?
     evidence: ["g4dn.xlarge"]
+    reference: "One g4dn.xlarge (NVIDIA T4)."
   - id: served-model
     question: Which model does vLLM serve?
     evidence: ["Mistral-7B"]
+    reference: "Mistral-7B-Instruct v0.2, AWQ-quantized (TheBloke/Mistral-7B-Instruct-v0.2-AWQ), served as local-mistral."
   - id: state-locking
     question: How is the Terraform state locked?
     evidence: ["use_lockfile"]
+    reference: "With native S3 locking (use_lockfile) on the state bucket, no DynamoDB table."
   - id: no-nat
     question: Why don't the nodes need a NAT Gateway?
     evidence: ["NAT Gateway"]
+    reference: "The cluster uses the account's default VPC, which avoids a NAT Gateway (a cost control)."
   - id: api-access
     question: Who can reach the public EKS API endpoint?
     evidence: ["admin_cidrs"]
+    reference: "Only the CIDRs passed in the admin_cidrs variable, which has no default and is required for plan/apply."
   - id: before-destroy
     question: What has to run before terraform destroy, and why?
     evidence: ["teardown-eks.sh"]
+    reference: "scripts/teardown-eks.sh: it deletes the apps, Karpenter's nodes and the EBS volumes behind PVCs, which terraform destroy would orphan and keep billing."
 
   # --- Scale-to-zero ---
   - id: keda-wake
     question: How does the platform wake vLLM up from zero replicas?
     evidence: ["gateway-demand"]
+    reference: "KEDA's gateway-demand trigger reads LiteLLM's request metric for local-mistral; LiteLLM is always running, so a request scales vLLM from 0 to 1, Karpenter launches a GPU node, and LiteLLM falls back to claude-fallback meanwhile."
   - id: vllm-metric-cant-wake
     question: Why can't a vLLM metric wake vLLM from zero?
     evidence: ["nothing publishes the metric"]
+    reference: "At 0 replicas there is no vLLM pod, so nothing publishes the metric."
   - id: startup-trigger-terminating
     question: Why does the startup trigger exclude terminating pods?
     evidence: ["terminating pod"]
+    reference: "Counting terminating pods woke vLLM again after every scale-to-zero, in a loop."
   - id: node-removal
     question: How long does it take to remove an idle GPU node with Karpenter?
     evidence: ["~12 minutes in total"]
+    reference: "About 12 minutes after the last request: Karpenter removes the empty node 5 minutes after vLLM reaches 0, and the instance is gone ~7 minutes later (vs ~18 with the Cluster Autoscaler)."
   - id: spot-fallback
     question: What happens when there is no spot GPU capacity?
     evidence: ["UnfulfillableCapacity"]
+    reference: "EC2 answers UnfulfillableCapacity and Karpenter retries on on-demand automatically, ~12 s later."
 
   # --- Cold start ---
   - id: cold-start-karpenter
     question: How long does a cold start take with Karpenter and the image cache?
     evidence: ["~5-6"]
+    reference: "About 5-6 minutes, down from ~10-11 without the image cache."
   - id: snapshot-slower
     question: Why did the EBS snapshot make the cold start slower?
     evidence: ["first time it's read"]
+    reference: "A volume restored from a snapshot fetches each block from S3 the first time it's read, and vLLM reads thousands of files at startup."
   - id: init-rate-dropped
     question: Why didn't the volume initialization rate work with EKS managed node groups?
     evidence: ["drop `VolumeInitializationRate`"]
+    reference: "EKS managed node groups copy the launch template and drop VolumeInitializationRate, so the volume wasn't initialized at the provisioned rate."
 
   # --- Performance and cost ---
   - id: throughput-8
     question: What throughput does vLLM reach with 8 concurrent requests?
     evidence: ["342"]
+    reference: "342 output tokens/s on the first run (310 on the second)."
   - id: ttft
     question: What is the time to first token when vLLM is warm?
     evidence: ["0.31 s"]
+    reference: "About 0.31 s at concurrency 1 (0.3-0.4 s warm)."
   - id: total-cost
     question: What did all the EKS runs cost in total?
     evidence: ["$6.12"]
+    reference: "$6.12 for all four EKS runs ($1.48 + $1.45 + $2.12 + $1.07)."
   - id: second-run-cost
     question: What did the second EKS session cost?
     evidence: ["$1.45"]
+    reference: "$1.45 before tax."
 
   # --- RAG and supply chain ---
   - id: image-signature
     question: How does the cluster make sure the RAG image comes from CI?
     evidence: ["require-image-signature"]
+    reference: "CI signs it keylessly with cosign, and Kyverno's require-image-signature policy (Enforce) only admits ghcr.io/yack300 images signed by this repo's ci.yml on main, pinning them to the verified digest."
   - id: cosign-v2
     question: Why does CI use cosign v2 instead of v3?
     evidence: ["OCI referrers"]
+    reference: "cosign v3 writes signatures only as OCI referrers in the new bundle format, which Kyverno's verifyImages doesn't read and GHCR can't serve."
   - id: alias-swap
     question: How does ingestion avoid serving a half-built index?
     evidence: ["repoints the `platform-docs` alias"]
+    reference: "Each ingestion writes a new collection and atomically repoints the platform-docs alias, deleting older versions."
   - id: single-user-message
     question: Why is the prompt sent as a single user message?
     evidence: ["system role", "system message"]
+    reference: "Mistral's chat template served by vLLM rejects a system role (400), so everything goes in one user message."
   - id: ingest-oom
     question: Why was the ingestion Job OOMKilled?
     evidence: ["834 MiB"]
+    reference: "ONNX memory grows with the embedding batch: it peaked at 834 MiB with 32 chunks per call, over the 768 MiB limit; the batch is now 8."
   - id: drop-params
     question: Why does LiteLLM drop unsupported parameters?
     evidence: ["drop_params"]
+    reference: "claude-fallback (claude-sonnet-5) rejects temperature other than 1, so LiteLLM drops parameters a model doesn't support (drop_params)."
 
   # --- Spanish (the embedding model may be English-only) ---
   - id: es-k8s-version
     question: ¿Qué versión de Kubernetes usa el clúster de EKS?
     lang: es
     evidence: ["EKS 1.36"]
+    reference: "EKS 1.36."
   - id: es-cold-start
     question: ¿Cuánto tarda el arranque en frío con Karpenter y la caché de la imagen?
     lang: es
     evidence: ["~5-6"]
+    reference: "Unos 5-6 minutos (antes ~10-11 sin la caché)."
   - id: es-total-cost
     question: ¿Cuánto costaron en total las sesiones en EKS?
     lang: es
     evidence: ["$6.12"]
+    reference: "$6.12 en total por las cuatro sesiones en EKS."
   - id: es-snapshot
     question: ¿Por qué el snapshot de EBS hizo más lento el arranque en frío?
     lang: es
     evidence: ["first time it's read"]
+    reference: "Un volumen restaurado desde snapshot trae cada bloque de S3 la primera vez que se lee, y vLLM lee miles de archivos al arrancar."
   - id: es-keda-wake
     question: ¿Cómo despierta la plataforma a vLLM desde cero réplicas?
     lang: es
     evidence: ["gateway-demand"]
+    reference: "El trigger gateway-demand de KEDA lee la métrica de peticiones de LiteLLM (que siempre corre) y escala vLLM de 0 a 1; Karpenter lanza un nodo GPU y mientras tanto LiteLLM usa claude-fallback."
 
   # --- No answer in the docs ---
   - id: off-capital

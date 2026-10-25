@@ -1,0 +1,22 @@
+# Answer-quality judge for the RAG service (docs/retrieval-eval.md).
+#
+# Grades an answers file produced by `python -m rag.answers` on a cluster:
+# each answer is checked by Claude for agreement with the question's
+# reference answer, faithfulness to the passages the model was given, the
+# language it's written in, and, for questions the docs can't answer,
+# declining. From the repo root:
+#
+#   docker run --rm -v "$PWD/apps/rag/eval":/eval -w /eval/judge \
+#     -e ANSWERS=/eval/answers/<file>.json -e ANTHROPIC_API_KEY \
+#     -e HOME=/tmp -e PROMPTFOO_DISABLE_TELEMETRY=1 --entrypoint promptfoo \
+#     ghcr.io/promptfoo/promptfoo:0.125.1 eval --no-cache -o /eval/judge/results.json
+#   python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json
+description: RAG answer quality
+prompts: ["{{answer}}"]
+providers: [echo]
+tests: file://tests.js
+defaultTest:
+  options:
+    # The judge. Not the model being judged: answers come from Mistral-7B,
+    # or from claude-fallback while vLLM cold-starts (each answer says which).
+    provider: anthropic:messages:claude-sonnet-5
