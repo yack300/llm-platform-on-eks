@@ -1,6 +1,6 @@
 """RAG API: question -> retrieve from Qdrant -> answer through LiteLLM.
 
-    POST /ask      {"question": "...", "top_k": 4}
+    POST /ask      {"question": "...", "top_k": 4, "include_context": false}
     GET  /healthz  liveness/readiness
     GET  /metrics  Prometheus (scraped via k8s/observability/servicemonitors.yaml)
 
@@ -42,6 +42,9 @@ app.mount("/metrics", make_asgi_app())
 class Ask(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     top_k: int = Field(default=4, ge=1, le=10)
+    # Return each passage's text with its source: what an answer-quality
+    # judge needs to check the answer against (rag.answers sets it).
+    include_context: bool = False
 
 
 @app.get("/healthz")
@@ -79,10 +82,15 @@ def ask(body: Ask) -> dict:
 
     data = resp.json()
     REQUESTS.labels("ok").inc()
+    sources = []
+    for n, (c, score) in enumerate(hits, start=1):
+        source = {"n": n, "source": c.source, "heading": c.heading, "score": round(score, 3)}
+        if body.include_context:
+            source["text"] = c.text
+        sources.append(source)
     return {
         "answer": data["choices"][0]["message"]["content"],
         # Which model actually answered: local, or claude-fallback.
         "model": data.get("model"),
-        "sources": [{"n": n, "source": c.source, "heading": c.heading, "score": round(score, 3)}
-                    for n, (c, score) in enumerate(hits, start=1)],
+        "sources": sources,
     }
