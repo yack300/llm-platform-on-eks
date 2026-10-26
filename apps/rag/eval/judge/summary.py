@@ -24,6 +24,9 @@ def main(path: str) -> None:
     for r in results:
         meta = r["testCase"].get("metadata", {})
         groups = ["all", f"lang={meta.get('lang')}", f"model={meta.get('model')}"]
+        if not r.get("gradingResult"):  # failed before grading (e.g. template error)
+            grader_errors.append((meta.get("id"), "all", (r.get("error") or "").split("\n")[0]))
+            continue
         for c in r["gradingResult"]["componentResults"]:
             metric = c["assertion"].get("metric")
             reason = c.get("reason", "").replace("\n", " ")

@@ -30,6 +30,11 @@ const rubric = {
     'numbers in another language are fine.',
 };
 
+// promptfoo renders vars as Nunjucks templates: answers and passages that
+// quote `${{ secrets.X }}` or kubeconform's `{{.Group}}` broke the run. Raw
+// blocks keep them literal.
+const raw = (text) => `{% raw %}${String(text).replace(/{%-?\s*endraw\s*-?%}/g, '')}{% endraw %}`;
+
 module.exports = function () {
   const { answers } = JSON.parse(fs.readFileSync(process.env.ANSWERS, 'utf8'));
   return answers.map((a) => {
@@ -46,7 +51,12 @@ module.exports = function () {
     return {
       description: `${a.id} (${a.lang}, ${a.model})`,
       // A failed request has no answer: it fails every assertion.
-      vars: { query: a.question, answer: a.answer ?? `ERROR: ${a.error}`, context, reference: a.reference || '' },
+      vars: {
+        query: raw(a.question),
+        answer: raw(a.answer ?? `ERROR: ${a.error}`),
+        context: raw(context),
+        reference: raw(a.reference || ''),
+      },
       metadata: {
         id: a.id, lang: a.lang, answerable: String(a.answerable), model: a.model || 'error',
         // calibration.json only: the verdict a correct judge gives each check.

@@ -14,9 +14,15 @@ def test_context_is_numbered_and_question_comes_last():
     content = message["content"]
     assert "[1] README.md - Results\ncold start 5:14" in content
     assert "[2] docs/x.md - Costs\n$3.57" in content
-    assert content.endswith("Question: How fast is the cold start?")
+    assert "Question: How fast is the cold start?" in content
+    assert content.index("[2]") < content.index("Question:")
 
 
 def test_model_is_told_not_to_guess():
     (message,) = build_messages("q", [])
     assert "don't know" in message["content"]
+
+
+def test_answer_language_follows_the_question():
+    (message,) = build_messages("¿Cuánto tarda?", [])
+    assert message["content"].endswith("Answer in the same language as the question.")
