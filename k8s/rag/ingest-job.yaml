@@ -29,7 +29,7 @@ spec:
       containers:
         - name: ingest
           # Same image and tag as the API (apps/rag/VERSION).
-          image: ghcr.io/yack300/llm-platform-rag:0.2.2
+          image: ghcr.io/yack300/llm-platform-rag:0.2.3
           command: ["python", "-m", "rag.ingest"]
           env:
             - name: QDRANT_URL

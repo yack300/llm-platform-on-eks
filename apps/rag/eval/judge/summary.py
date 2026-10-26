@@ -5,7 +5,12 @@ reason. For calibration.json, whose answers carry the expected verdicts, it
 also reports where the judge disagreed. Markdown, for the terminal or a CI
 job summary. Stdlib only.
 
-    python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json
+    python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json [retry.json ...]
+
+The judge occasionally returns no or malformed output (~1 call in 100):
+those checks are reported as ungraded, with the promptfoo flag that re-runs
+just those questions; pass the re-run's file after the first one, and its
+results replace the first file's for the same questions.
 """
 import collections
 import json
@@ -14,8 +19,12 @@ import sys
 METRICS = ["correct", "faithful", "declines", "language"]
 
 
-def main(path: str) -> None:
-    results = json.load(open(path))["results"]["results"]
+def main(paths: list[str]) -> None:
+    by_id = {}
+    for path in paths:
+        for r in json.load(open(path))["results"]["results"]:
+            by_id[r["testCase"].get("metadata", {}).get("id")] = r
+    results = list(by_id.values())
     # (group, metric) -> [passed, total]
     counts = collections.defaultdict(lambda: [0, 0])
     failures = []
@@ -44,8 +53,10 @@ def main(path: str) -> None:
                 disagreements.append((meta.get("id"), metric, reason))
 
     if grader_errors:
+        ids = ",".join(sorted({qid for qid, _, _ in grader_errors}))
         sys.exit(f"The judge couldn't grade {len(grader_errors)} checks, e.g. "
-                 f"{grader_errors[0][0]} {grader_errors[0][1]}: {grader_errors[0][2][:300]}")
+                 f"{grader_errors[0][0]} {grader_errors[0][1]}: {grader_errors[0][2][:300]}\n"
+                 f"Re-run them with: --filter-metadata id={ids} -o <retry.json>")
 
     groups = sorted({g for g, _ in counts}, key=lambda g: (g != "all", g))
     print("| | " + " | ".join(METRICS) + " |")
@@ -69,4 +80,4 @@ def main(path: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1:])
