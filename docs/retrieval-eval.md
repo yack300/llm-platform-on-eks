@@ -168,3 +168,45 @@ correct 2-sentence answer scored between 0.33 and 0.75 across runs (threshold
 0.8), with no reason given. A pass/fail rubric that has to name the
 unsupported claim agreed on 14 of 14, on two consecutive runs. A calibration
 run is 10 judge calls, ~12k tokens.
+
+## First judged run on EKS (2026-10-26)
+
+Mistral-7B AWQ on vLLM, embeddinggemma retrieval, all 35 questions answered
+by the local model (none by the fallback). Answers and summaries in
+`apps/rag/eval/answers/2026-10-26-mistral*`.
+
+| RAG version | Prompt change | correct | faithful | declines | Spanish answers in Spanish |
+|---|---|---|---|---|---|
+| 0.2.1 | none | 23/30 | 22/30 | 4/5 | 0/7 |
+| 0.2.2 | "Answer in the same language as the question" (English) | 20/30 | 21/30 | 4/5 | 0/7 |
+| 0.2.3 | Spanish questions end with "Responde en español." | 21/30 | 24/30 | 4/5 | 0/7 |
+
+- **Mistral-7B answers in the context's language, whatever the prompt
+  says.** Retrieval works in Spanish (embeddinggemma finds the passages), but
+  every Spanish question got an English answer, even with the instruction
+  written in Spanish as the last line of the prompt (checked in the deployed
+  pod). That's a model limitation, not something prompting fixed: the options
+  are a more multilingual model or a translation step.
+- **The differences between versions are noise.** 3 questions out of 30 is
+  within what a re-run moves, so none of the prompt changes measurably
+  helped or hurt correctness. 0.2.2 did add one concrete regression: it
+  answered "Paris" to the capital of France after saying the context didn't
+  cover it. 0.2.3 sends English questions the original prompt.
+- **Typical failures** the judge's reasons point at: citing a passage that
+  doesn't contain the fact (the right fact, the wrong `[n]`), inventing a
+  cause ("drops the parameters because it no longer supports them"), mixing
+  numbers from different runs (a cold start of "1-2 minutes"), and "I don't
+  know" when the passage was there (node removal time).
+- **The judge itself** returned no or malformed output on ~1 of ~100 calls,
+  so `summary.py` reports those checks as ungraded and takes a re-run of just
+  those questions. Answers or passages quoting `{{ }}` / `{% %}` broke
+  promptfoo's Nunjucks rendering until they were wrapped as raw blocks. A full
+  run is ~95 judge calls, ~90k input and ~25k output tokens.
+- **Keep vLLM warm between runs.** KEDA scaled vLLM to zero during a ~6
+  minute pause between runs (as designed), Karpenter removed the GPU node,
+  and the next run started before the new node's vLLM was Ready: 17 of 35
+  answers came from claude-fallback. `rag.answers` records the model per
+  answer, which is how it showed; that run was discarded and repeated.
+
+The GPU node came up on spot this time (the first time in five runs), and
+later on-demand when spot had no capacity.

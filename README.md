@@ -37,7 +37,9 @@ through the LiteLLM gateway. Full numbers, method and caveats in
 - **RAG retrieval measured in CI** on 30 questions with known answers:
   switching to a multilingual embedding model took hit@4 from 0.70 to 0.90
   (Spanish 0.40 -> 0.80) for ~0.5 GiB more memory; CI fails the image if it
-  drops below the baseline. Details in [docs/retrieval-eval.md](docs/retrieval-eval.md).
+  drops below the baseline. Answers are graded by Claude as judge (calibrated
+  against known verdicts): Mistral-7B gets ~70-80% correct and faithful. Details
+  in [docs/retrieval-eval.md](docs/retrieval-eval.md).
 - **Same GPU, ~6.8x the throughput** going from 1 to 8 concurrent requests,
   with p50 latency only going from 2.5 s to 3 s (vLLM continuous batching).
 - **Bugs that only showed up on real infrastructure**, fixed in this repo:
@@ -155,9 +157,9 @@ Known gaps:
 - The platform NodePool's AZ-aware launches (for Qdrant/Grafana volumes
   stranded by a spot interruption) haven't been exercised on EKS yet.
 - The `kyverno` Application shows OutOfSync on its policy CRDs.
-- RAG answer quality is graded by Claude (docs/retrieval-eval.md), but not
-  yet on Mistral's answers: that needs an EKS session, as does the
-  embeddinggemma model (0.2.0+). There's no similarity threshold for
+- RAG answers judged by Claude on EKS (docs/retrieval-eval.md): ~70-80%
+  correct and faithful, and Mistral-7B answers Spanish questions in English
+  regardless of the prompt (0/7). There's no similarity threshold for
   off-topic questions yet.
 - LiteLLM doesn't restart on a ConfigMap change (no config checksum on its
   Deployment); a failing ingestion Sync hook blocks newer revisions until the

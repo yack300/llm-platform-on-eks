@@ -1,0 +1,1406 @@
+{
+  "date": "2026-10-26",
+  "top_k": 4,
+  "answers": [
+    {
+      "id": "k8s-version",
+      "lang": "en",
+      "answerable": true,
+      "question": "Which Kubernetes version does the EKS cluster run?",
+      "reference": "EKS 1.36.",
+      "answer": " The EKS cluster runs on version 1.36 based on the context provided in [1] and [2]. However, it is important to note that the version number may change depending on when the cluster was created or updated.",
+      "model": "local-mistral",
+      "seconds": 1.8,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Repo-wide conventions",
+          "score": 0.553,
+          "text": "pc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`\n\npc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`, e.g.\n  `-var='admin_cidrs=[\"<ip>/32\"]'`. Keep `kubernetes_version` in EKS *standard*\n  support: extended support bills a much higher hourly rate, and retired versions\n  can't be created (1.30 already can't)."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.552,
+          "text": "if the repo is renamed. `scripts/deploy-local.sh`\nstill installs the same components with `helm upgrade --install` for kind, without\nArgo CD (memory).\n\n**Things on EKS that only exist for EKS:** the gp3 default StorageClass\n(`k8s/storage/`, EKS ships none), the EBS CSI driver and Karpenter (IAM in Terraform,\ncontroller and `k8s/karpenter/` NodePools via Argo CD), control plane ServiceMonitors\ndisabled in the Prometheus values. vLLM's\nDeployment has no `replicas` and its Application ignores `/spec/replicas`, because KEDA\nowns the count; adding `replicas` back would make self-heal undo every scale-to-zero.\nTeardown must go through `scripts/teardown-eks.sh` before `terraform destroy`:\nKarpenter's instances aren't Terraform resources, so the script deletes the NodePools\nfirst (with root's auto-sync off, or Argo CD recreates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost and performance — results from a real EKS run",
+          "score": 0.552,
+          "text": "# Cost and performance — results from a real EKS run\n\nMeasured on 2026-10-06 on a real EKS 1.36 cluster built from this repo, then torn\ndown the same day. Everything below comes from that single session; rerun it\nbefore relying on the numbers for anything else."
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Repo-wide conventions",
+          "score": 0.494,
+          "text": "- All comments/docs/README content must be written in **English**, even when\n  discussing the repo in another language in chat.\n- `k8s/*-local*` files (`local-cpu-mock-deployment.yaml`, `configmap-local.yaml`,\n  `prometheus-grafana-values-local.yaml`, `keda-scaledobject-local.yaml`) are strictly for `scripts/deploy-local.sh` /\n  kind-minikube and must never be applied against real EKS.\n- The local profile is sized for an 8 GB laptop (Docker Desktop at ~6 GB): LiteLLM is\n  scaled to 1 replica, Alertmanager/node-exporter and Kyverno's reports/cleanup\n  controllers are disabled. The full stack at production settings exhausts that\n  memory and takes down the kind control plane, so keep local overrides in the\n  script or `*-local*` files rather than trimming the production manifests.\n- `terraform/` uses the account's default VPC unless both `vpc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`"
+        }
+      ]
+    },
+    {
+      "id": "gpu-instance",
+      "lang": "en",
+      "answerable": true,
+      "question": "Which GPU instance type serves the model?",
+      "reference": "One g4dn.xlarge (NVIDIA T4).",
+      "answer": " The `g4dn.xlarge` GPU instance type serves the model. [1]",
+      "model": "local-mistral",
+      "seconds": 1.63,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Setup",
+          "score": 0.515,
+          "text": "## Setup\n\n| | |\n|---|---|\n| GPU node | `g4dn.xlarge` (1x NVIDIA T4, 16 GB), **on-demand**: spot had no capacity that day (placement score 1 in every AZ) |\n| Model | `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` (4-bit AWQ), served by vLLM as `local-mistral` |\n| Path | client → LiteLLM gateway → vLLM (every request went through the gateway) |\n| Workload | short prompts (~17 input tokens), `max_tokens: 128` (~128 output tokens per request) |\n| Prices used | on-demand $0.526/h; spot ~$0.27/h (us-east-1 price at the time, for comparison) |"
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.432,
+          "text": "## Conclusion\n\nThe cost per token depends almost entirely on utilization. The same GPU costs\n$2.90 per million output tokens with one request at a time and $0.43 with\neight. And while it sits idle, the per-token cost is effectively unbounded:\na `g4dn.xlarge` on-demand kept up 24/7 costs ~$384/month whether it serves\nanything or not.\n\nThat shapes the design:\n\n- **Low or bursty traffic:** scale vLLM and its GPU node to zero, accept an\n  ~8-minute cold start, and let the gateway route to an external provider\n  meanwhile. You pay for the GPU only while there's demand.\n- **Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available."
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.421,
+          "text": "**Two parallel LiteLLM/vLLM configs — real GPU vs. local mock.** Because vLLM requires\na real GPU, there are two versions of the inference backend that LiteLLM points to,\nswitched by which files you apply:\n- Real: `k8s/vllm/deployment.yaml` (GPU, taints tolerated, model\n  `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` served as `local-mistral`) +\n  `k8s/litellm/configmap.yaml`.\n- Local/no-GPU: `k8s/vllm/local-cpu-mock-deployment.yaml` (Ollama running\n  `qwen2.5:0.5b`, OpenAI-compatible, real but tiny inference) +\n  `k8s/litellm/configmap-local.yaml`.\nBoth configmaps use the same `litellm-config` ConfigMap name and the same\n`model_name: local-mistral`, so the client-facing API is identical regardless of\nwhich backend is deployed — `scripts/deploy-local.sh` applies the local pair,\nproduction applies the GPU pair. Don't let these two drift apart on\n`litellm_settings`/`router_settings` without a reason. The one intentional\ndifference: only the production config defines the `claude-fallback` model"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost (GPU node only)",
+          "score": 0.42,
+          "text": "## Cost (GPU node only)\n\n| Concurrent requests | Per 1M output tokens (on-demand) | Per 1M output tokens (spot) | Per 1,000 requests (on-demand) | Per 1,000 requests (spot) |\n|---|---|---|---|---|\n| 1 | $2.90 | $1.49 | $0.37 | $0.19 |\n| 4 | $0.79 | $0.40 | $0.10 | $0.05 |\n| 8 | $0.43 | $0.22 | $0.055 | $0.028 |\n\nComputed as `hourly price ÷ (tokens or requests per hour)` at sustained load.\nThese figures cover only the GPU node. They leave out the fixed cost of\nrunning the platform: the EKS control plane ($0.10/h) and the spot platform\nnodes that run LiteLLM, Prometheus, Argo CD and the rest, which bill even\nwhen vLLM is scaled to zero."
+        }
+      ]
+    },
+    {
+      "id": "served-model",
+      "lang": "en",
+      "answerable": true,
+      "question": "Which model does vLLM serve?",
+      "reference": "Mistral-7B-Instruct v0.2, AWQ-quantized (TheBloke/Mistral-7B-Instruct-v0.2-AWQ), served as local-mistral.",
+      "answer": " vLLM serves the model `TheBloke/Mistral-7B-Instruct-v0.2-AWQ`, which is referred to as `local-mistral` in the context. [1]",
+      "model": "local-mistral",
+      "seconds": 2.56,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.49,
+          "text": "**Two parallel LiteLLM/vLLM configs — real GPU vs. local mock.** Because vLLM requires\na real GPU, there are two versions of the inference backend that LiteLLM points to,\nswitched by which files you apply:\n- Real: `k8s/vllm/deployment.yaml` (GPU, taints tolerated, model\n  `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` served as `local-mistral`) +\n  `k8s/litellm/configmap.yaml`.\n- Local/no-GPU: `k8s/vllm/local-cpu-mock-deployment.yaml` (Ollama running\n  `qwen2.5:0.5b`, OpenAI-compatible, real but tiny inference) +\n  `k8s/litellm/configmap-local.yaml`.\nBoth configmaps use the same `litellm-config` ConfigMap name and the same\n`model_name: local-mistral`, so the client-facing API is identical regardless of\nwhich backend is deployed — `scripts/deploy-local.sh` applies the local pair,\nproduction applies the GPU pair. Don't let these two drift apart on\n`litellm_settings`/`router_settings` without a reason. The one intentional\ndifference: only the production config defines the `claude-fallback` model"
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.48,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.472,
+          "text": "- **Scale-to-zero, end to end:** request → KEDA 0→1 → Cluster Autoscaler adds\n  a GPU node from 0 → first local response in ~8–9 min (mostly the 8.7 GB\n  image pull). Idle, vLLM is back at 0 in ~5 min and the GPU node is gone in ~18 min.\n- **The whole validation session cost $1.48** (before tax): apply, benchmark,\n  scale-to-zero test and teardown, ~2 hours of cluster time.\n- **Time to first token ~0.3-0.4 s** warm (second run), for full answers of\n  ~2.7-3.3 s.\n- **Cold start cut from ~10-11 to ~5-6 minutes** (third run): GPU nodes from\n  Karpenter, with the vLLM image pre-pulled on an EBS snapshot initialized at\n  300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS\n  managed node group, which drops the initialization rate. Details in\n  [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-works).\n- **RAG retrieval measured in CI** on 30 questions with known answers:\n  switching to a multilingual embedding model took hi"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Setup",
+          "score": 0.459,
+          "text": "## Setup\n\n| | |\n|---|---|\n| GPU node | `g4dn.xlarge` (1x NVIDIA T4, 16 GB), **on-demand**: spot had no capacity that day (placement score 1 in every AZ) |\n| Model | `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` (4-bit AWQ), served by vLLM as `local-mistral` |\n| Path | client → LiteLLM gateway → vLLM (every request went through the gateway) |\n| Workload | short prompts (~17 input tokens), `max_tokens: 128` (~128 output tokens per request) |\n| Prices used | on-demand $0.526/h; spot ~$0.27/h (us-east-1 price at the time, for comparison) |"
+        }
+      ]
+    },
+    {
+      "id": "state-locking",
+      "lang": "en",
+      "answerable": true,
+      "question": "How is the Terraform state locked?",
+      "reference": "With native S3 locking (use_lockfile) on the state bucket, no DynamoDB table.",
+      "answer": " The Terraform state is locked using native S3 locking via `use_lockfile` in the `terraform/bootstrap/` module's S3 bucket, which is created standalone and applied once [1]. The `terraform/main.tf` file uses an empty `backend \"s3\"` configuration resolved via `-backend-config=backend.hcl`, which is gitignored and generated from `terraform/bootstrap`'s `backend_hcl` output [1].",
+      "model": "local-mistral",
+      "seconds": 3.52,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.485,
+          "text": "\n`litellm_settings`/`router_settings` without a reason. The one intentional\ndifference: only the production config defines the `claude-fallback` model\n\n\n`litellm_settings`/`router_settings` without a reason. The one intentional\ndifference: only the production config defines the `claude-fallback` model and\n`fallbacks`, since there's no Anthropic key locally.\n\n**Terraform remote state has its own bootstrap module.** `terraform/bootstrap/`\ncreates the S3 bucket (native S3 locking via `use_lockfile`, no DynamoDB) for\n`terraform/`'s own state, and is\napplied once, standalone, with local state (chicken-and-egg: you can't use a bucket\nas backend for the config that creates it). `terraform/main.tf` uses `backend \"s3\" {}`\n(empty — partial config) resolved via `-backend-config=backend.hcl`, which is\ngitignored and generated from `terraform/bootstrap`'s `backend_hcl` output."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.433,
+          "text": "## Architecture notes that span multiple files\n\n**Terraform vs. Argo CD split is load-bearing.** Terraform only ever provisions AWS\nresources (EKS cluster, the fixed platform node group, add-ons, IAM/Pod Identity,\nKarpenter's IAM roles and interruption queue, S3 for state). Everything that runs\n*inside* the cluster — including Karpenter itself and its NodePools — is deployed by\nArgo CD from this repo, not by a Terraform\n`helm_release`/`kubernetes_*` resource. When adding a new workload, follow this split\nrather than mixing the two. The one exception is the NVIDIA device plugin: GPU nodes run\nBottlerocket's NVIDIA variant, which ships it as a host service, so there's no\nDaemonSet to deploy (and adding one would conflict with it)."
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Architecture",
+          "score": 0.414,
+          "text": "## Architecture\n\n```mermaid\nflowchart LR\n    client([Client]) --> litellm[LiteLLM gateway]\n    litellm -->|local-mistral| vllm[vLLM<br/>Mistral-7B AWQ<br/>GPU node, 0..N]\n    litellm -.->|fallback while vLLM is cold| claude[Anthropic API]\n    litellm --> prom[(Prometheus)]\n    vllm --> prom\n    prom --> keda[KEDA]\n    keda -->|replicas 0..N| vllm\n    vllm -.->|pending pod| karpenter[Karpenter]\n    karpenter -->|GPU node 0..N, spot or on-demand| vllm\n    prom --> grafana[Grafana<br/>cost and latency]\n    git[(GitHub main)] -->|Argo CD| cluster{{EKS cluster}}\n```\n\nTerraform provisions only AWS resources (EKS, the platform node group, IAM\nvia Pod Identity, Karpenter's IAM and interruption queue). Everything inside the cluster is deployed by Argo CD from this\nrepo, after CI (Checkov, Trivy, GitLeaks, kubeconform, Kyverno, Terraform\nvalidate) passes on `main`."
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Commands",
+          "score": 0.379,
+          "text": "## Commands\n\nThere is no application build/test suite (no app code). The commands that matter are\ninfra bootstrap and CI validation:\n\n```bash\n# Local dev cluster (kind), no GPU required — installs KEDA, Kyverno,\n# kube-prometheus-stack, Qdrant, and an Ollama CPU mock instead of real vLLM\n./scripts/deploy-local.sh\n\n# Terraform remote state — run ONCE per AWS account before the main terraform/ apply\ncd terraform/bootstrap && terraform init && terraform apply\n# copy the `backend_hcl` output into terraform/backend.hcl (see backend.hcl.example)\n\n# Main infra (EKS cluster, platform node group, Karpenter IAM/queue) — real AWS, real cost\ncd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=[\"<ip>/32\"]'"
+        }
+      ]
+    },
+    {
+      "id": "no-nat",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why don't the nodes need a NAT Gateway?",
+      "reference": "The cluster uses the account's default VPC, which avoids a NAT Gateway (a cost control).",
+      "answer": " The context does not provide information on why the nodes do not need a NAT Gateway. [1] and [2] discuss the architecture and cost comparison of the LLM-platform-on-eks project, but they do not mention NAT Gateways. [3] only provides results from a real EKS run.",
+      "model": "local-mistral",
+      "seconds": 2.74,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.299,
+          "text": "eates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing.\n\n**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back\nto on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`\n(overflow for platform pods beyond the fixed 2-node managed node group, which runs\nKarpenter itself). EC2NodeClasses find subnets and the node security group by the\n`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed\nname; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache\n(`snapshotID` + `volumeInitializationRate`) is set in-cluster by\n`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),\nbecause the snapshot is per account. Karpenter's Helm chart comes from an OCI registry\nregistered in `argocd-values.yaml`."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.295,
+          "text": "g, since their\n  EBS volumes can't follow them across AZs. Not fixed: stateful workloads\n  need a node group per AZ, or volumes that can be recreated.\n\nWarm performance (`scripts/benchmark.py`, streaming through LiteLLM,\n128 output tokens per request):\n\n| Concurrent requests | Output tokens/s | TTFT p50 | TTFT p95 | Latency p50 | Latency p95 |\n|---|---|---|---|---|---|\n| 1 | 47 | 0.31 s | 0.31 s | 2.74 s | 2.74 s |\n| 4 | 172 | 0.36 s | 0.42 s | 2.97 s | 3.02 s |\n| 8 | 310 | 0.41 s | 0.45 s | 3.26 s | 3.36 s |\n\nThroughput is ~9% below the first run's (342 tok/s at 8); the prompt,\nstreaming and node differ between runs, so treat it as run-to-run noise\nrather than a regression.\n\nWhat this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold\nstarts, the snapshot builds and the teardown):"
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.293,
+          "text": "## Results from a real EKS run\n\nMeasured on EKS 1.36 with one `g4dn.xlarge` (NVIDIA T4) serving Mistral-7B AWQ\nthrough the LiteLLM gateway. Full numbers, method and caveats in\n[docs/cost-comparison.md](docs/cost-comparison.md).\n\n| Concurrent requests | Output tokens/s | p50 latency | Cost per 1M output tokens (on-demand / spot) |\n|---|---|---|---|\n| 1 | 50 | 2.54 s | $2.90 / $1.49 |\n| 4 | 186 | 2.75 s | $0.79 / $0.40 |\n| 8 | 342 | 2.98 s | $0.43 / $0.22 |"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Setup",
+          "score": 0.292,
+          "text": "## Setup\n\n| | |\n|---|---|\n| GPU node | `g4dn.xlarge` (1x NVIDIA T4, 16 GB), **on-demand**: spot had no capacity that day (placement score 1 in every AZ) |\n| Model | `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` (4-bit AWQ), served by vLLM as `local-mistral` |\n| Path | client → LiteLLM gateway → vLLM (every request went through the gateway) |\n| Workload | short prompts (~17 input tokens), `max_tokens: 128` (~128 output tokens per request) |\n| Prices used | on-demand $0.526/h; spot ~$0.27/h (us-east-1 price at the time, for comparison) |"
+        }
+      ]
+    },
+    {
+      "id": "api-access",
+      "lang": "en",
+      "answerable": true,
+      "question": "Who can reach the public EKS API endpoint?",
+      "reference": "Only the CIDRs passed in the admin_cidrs variable, which has no default and is required for plan/apply.",
+      "answer": " The `admin_cidrs` variable, which is required for any `plan`/`apply` and has no default value, determines who can reach the public EKS API endpoint [1].",
+      "model": "local-mistral",
+      "seconds": 1.95,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Repo-wide conventions",
+          "score": 0.495,
+          "text": "pc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`\n\npc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`, e.g.\n  `-var='admin_cidrs=[\"<ip>/32\"]'`. Keep `kubernetes_version` in EKS *standard*\n  support: extended support bills a much higher hourly rate, and retired versions\n  can't be created (1.30 already can't)."
+        },
+        {
+          "n": 2,
+          "source": "README.md",
+          "heading": "Repo structure",
+          "score": 0.421,
+          "text": "```\nllm-platform-on-eks/\n├── terraform/\n│   ├── bootstrap/            # One-time bootstrap: S3 bucket for remote state (native S3 locking)\n│   ├── main.tf                # EKS cluster (official module) + platform node group + Karpenter IAM/queue\n│   └── backend.hcl.example    # S3 backend template (copy to backend.hcl, gitignored)\n├── apps/\n│   └── rag/                   # RAG service (Python): ingestion + /ask API, Dockerfile, unit tests\n├── k8s/\n│   ├── vllm/                  # Deployment (GPU) + local-cpu-mock (Ollama) + Service + KEDA ScaledObject\n│   ├── litellm/                # Gateway: Deployment + ConfigMap (real vs. local) (routing/rate limits)\n│   ├── qdrant/                  # Vector DB for RAG (Helm values)\n│   ├── rag/                    # RAG ingestion Job (Argo CD Sync hook) + API Deployment\n│   ├── argocd/                 # Argo CD: install values, root app-of-apps, one Application per component\n│   ├── storage/                # Default gp3 StorageClass (EKS ships none"
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "LLM Platform on EKS",
+          "score": 0.389,
+          "text": "# LLM Platform on EKS\n\n[![CI](https://github.com/yack300/llm-platform-on-eks/actions/workflows/ci.yml/badge.svg)](https://github.com/yack300/llm-platform-on-eks/actions/workflows/ci.yml)\n\nReference platform demonstrating serving, gateway, RAG, cost observability, and\nsecurity for LLM inference workloads on Kubernetes (EKS), using the same GitOps\npattern (Terraform for AWS, Argo CD for everything in the cluster) used in production.\n\nThe GPU scales to zero: when nobody is using the model, both the vLLM pod and\nthe GPU node go away, and the next request wakes them up again while the\ngateway falls back to an external provider."
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.387,
+          "text": "if the repo is renamed. `scripts/deploy-local.sh`\nstill installs the same components with `helm upgrade --install` for kind, without\nArgo CD (memory).\n\n**Things on EKS that only exist for EKS:** the gp3 default StorageClass\n(`k8s/storage/`, EKS ships none), the EBS CSI driver and Karpenter (IAM in Terraform,\ncontroller and `k8s/karpenter/` NodePools via Argo CD), control plane ServiceMonitors\ndisabled in the Prometheus values. vLLM's\nDeployment has no `replicas` and its Application ignores `/spec/replicas`, because KEDA\nowns the count; adding `replicas` back would make self-heal undo every scale-to-zero.\nTeardown must go through `scripts/teardown-eks.sh` before `terraform destroy`:\nKarpenter's instances aren't Terraform resources, so the script deletes the NodePools\nfirst (with root's auto-sync off, or Argo CD recreates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing."
+        }
+      ]
+    },
+    {
+      "id": "before-destroy",
+      "lang": "en",
+      "answerable": true,
+      "question": "What has to run before terraform destroy, and why?",
+      "reference": "scripts/teardown-eks.sh: it deletes the apps, Karpenter's nodes and the EBS volumes behind PVCs, which terraform destroy would orphan and keep billing.",
+      "answer": " Before running `terraform destroy`, the script `scripts/teardown-eks.sh` has to be executed. The reason is that this script deletes the NodePools managed by Karpenter, waits for the nodes to be terminated, and deletes the Persistent Volume Claims (PVCs) and their backed EBS volumes. If the PVCs and their EBS volumes are not deleted before `terraform destroy`, they will be orphaned and continue to be billed. ([2], [3])",
+      "model": "local-mistral",
+      "seconds": 3.57,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "README.md",
+          "heading": "Getting started (recommended order)",
+          "score": 0.514,
+          "text": "pps; from then on Argo CD deploys everything else from this repo\n      (`k8s/argocd/apps/`), in order, excluding the `*-local*` files.\n3. **Important:\n\npps; from then on Argo CD deploys everything else from this repo\n      (`k8s/argocd/apps/`), in order, excluding the `*-local*` files.\n3. **Important:** when you're done, run `./scripts/teardown-eks.sh` (deletes the\n   apps, Karpenter's nodes and the EBS volumes behind PVCs, which `terraform destroy`\n   would orphan), then `terraform destroy` in `terraform/`. Karpenter removes idle GPU\n   nodes, but the EKS control plane and the platform nodes are billed hourly while they\n   exist."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.48,
+          "text": "if the repo is renamed. `scripts/deploy-local.sh`\nstill installs the same components with `helm upgrade --install` for kind, without\nArgo CD (memory).\n\n**Things on EKS that only exist for EKS:** the gp3 default StorageClass\n(`k8s/storage/`, EKS ships none), the EBS CSI driver and Karpenter (IAM in Terraform,\ncontroller and `k8s/karpenter/` NodePools via Argo CD), control plane ServiceMonitors\ndisabled in the Prometheus values. vLLM's\nDeployment has no `replicas` and its Application ignores `/spec/replicas`, because KEDA\nowns the count; adding `replicas` back would make self-heal undo every scale-to-zero.\nTeardown must go through `scripts/teardown-eks.sh` before `terraform destroy`:\nKarpenter's instances aren't Terraform resources, so the script deletes the NodePools\nfirst (with root's auto-sync off, or Argo CD recreates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing."
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.477,
+          "text": "eates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing.\n\n**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back\nto on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`\n(overflow for platform pods beyond the fixed 2-node managed node group, which runs\nKarpenter itself). EC2NodeClasses find subnets and the node security group by the\n`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed\nname; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache\n(`snapshotID` + `volumeInitializationRate`) is set in-cluster by\n`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),\nbecause the snapshot is per account. Karpenter's Helm chart comes from an OCI registry\nregistered in `argocd-values.yaml`."
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Commands",
+          "score": 0.471,
+          "text": "         # from vLLM + GPU nodes at 0 to the first vLLM answer\n./scripts/benchmark.py --json out.json   # TTFT, latency, tokens/s at concurrency 1,4,8\n\n# Teardown: ALWAYS before terraform destroy (removes Karpenter's nodes and PVC-backed EBS volumes)\n./scripts/teardown-eks.sh"
+        }
+      ]
+    },
+    {
+      "id": "keda-wake",
+      "lang": "en",
+      "answerable": true,
+      "question": "How does the platform wake vLLM up from zero replicas?",
+      "reference": "KEDA's gateway-demand trigger reads LiteLLM's request metric for local-mistral; LiteLLM is always running, so a request scales vLLM from 0 to 1, Karpenter launches a GPU node, and LiteLLM falls back to claude-fallback meanwhile.",
+      "answer": " The platform wakes vLLM up from zero replicas by scaling it up using KEDA, which reads a metric from LiteLLM to determine when to scale. A GPU node is also required for vLLM to run, and is launched by Karpenter when needed. The cold start time, which includes the image pull and vLLM's own startup, is now approximately 5-6 minutes, significantly faster than before. [1], [3]",
+      "model": "local-mistral",
+      "seconds": 3.86,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.593,
+          "text": "**Scale-to-zero spans three layers.** The ScaledObject has three triggers:\n`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=\"local-mistral\"}`\nfrom LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads\n`vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A\nvLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.\nA third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod\nisn't Ready yet, for up to 20 minutes: otherwise gateway-demand expires ~7 minutes after\nthe last request and KEDA kills a slower cold start mid-load. Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,\nwhich doesn't count requests that failed because the backend was down. The query\nalso can't be a plain `increase()`: LiteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls "
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Scale-to-zero, measured (first run)",
+          "score": 0.591,
+          "text": "## Scale-to-zero, measured (first run)\n\nWaking from zero, with no GPU node running (AL2023 GPU nodes):\n\n| Step | Time |\n|---|---|\n| KEDA sees the LiteLLM request and scales vLLM 0 → 1 | ~18 s |\n| Cluster Autoscaler triggers a GPU node scale-up from 0 | ~15 s |\n| GPU node boots and joins the cluster | ~1.5 min |\n| vLLM image pull (8.7 GB) | ~4.5 min |\n| Model load + CUDA graph capture | ~2 min |\n| **First local response** | **~8–9 min** |\n\nDuring that window LiteLLM's `fallbacks` send `local-mistral` requests to\n`claude-fallback`, so clients still get an answer.\n\nGoing back to zero after the last request:\n\n- vLLM at 0 replicas: ~5 min.\n- GPU node removed by the Cluster Autoscaler: ~18 min.\n\nThe cold start is dominated by the image pull. The obvious next improvements\nare caching the vLLM image on the node (a custom AMI or a pre-pulled image)\nand keeping the model weights on a volume instead of downloading them on\nevery start."
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.567,
+          "text": "iteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls \n\niteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls back to the raw value for series younger than the window). While vLLM\ncold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0\nalso needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`\nNodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own\nstartup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger\nmust keep excluding terminating pods: counting them woke vLLM after every\nscale-to-zero, in a loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request)."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.525,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        }
+      ]
+    },
+    {
+      "id": "vllm-metric-cant-wake",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why can't a vLLM metric wake vLLM from zero?",
+      "reference": "At 0 replicas there is no vLLM pod, so nothing publishes the metric.",
+      "answer": " According to the context [1] and [2], a vLLM metric cannot wake vLLM from zero because when vLLM is at zero replicas, nothing publishes the metric, and the deployment-level LiteLLM metric is used instead. The vLLM-only trigger can never wake it, and the startup-in-progress trigger holds the replica while its pod isn't ready yet. The query also cannot be a plain `increase()` because LiteLLM creates the series on its first request already at 1, so `increase()` reads 0 for the very first request after LiteLLM starts.",
+      "model": "local-mistral",
+      "seconds": 4.7,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.55,
+          "text": "**Scale-to-zero spans three layers.** The ScaledObject has three triggers:\n`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=\"local-mistral\"}`\nfrom LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads\n`vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A\nvLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.\nA third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod\nisn't Ready yet, for up to 20 minutes: otherwise gateway-demand expires ~7 minutes after\nthe last request and KEDA kills a slower cold start mid-load. Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,\nwhich doesn't count requests that failed because the backend was down. The query\nalso can't be a plain `increase()`: LiteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls "
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.531,
+          "text": "iteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls \n\niteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls back to the raw value for series younger than the window). While vLLM\ncold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0\nalso needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`\nNodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own\nstartup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger\nmust keep excluding terminating pods: counting them woke vLLM after every\nscale-to-zero, in a loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request)."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.49,
+          "text": "y on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |\n\nThe snapshot made the cold start slower. A volume restored from a snapshot\nfetches each block from S3 the first time it's read, and vLLM reads\nthousands of PyTorch/CUDA files at startup: during the slow runs the\ncontainer used under 0.6 CPU cores with no throttling, and the volume served\nonly ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. After 15\nminutes the volume was 21% initialized.\n\nThe fix should have been a provisioned volume initialization rate (the whole\n~30 GiB snapshot in ~100 s), but EKS managed node groups copy the launch\ntemplate into their own and drop `VolumeInitializationRate`: ours had 300,\nthe copy EKS launches from doesn't, so the third run behaved like the\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Scale-to-zero, measured (first run)",
+          "score": 0.483,
+          "text": "## Scale-to-zero, measured (first run)\n\nWaking from zero, with no GPU node running (AL2023 GPU nodes):\n\n| Step | Time |\n|---|---|\n| KEDA sees the LiteLLM request and scales vLLM 0 → 1 | ~18 s |\n| Cluster Autoscaler triggers a GPU node scale-up from 0 | ~15 s |\n| GPU node boots and joins the cluster | ~1.5 min |\n| vLLM image pull (8.7 GB) | ~4.5 min |\n| Model load + CUDA graph capture | ~2 min |\n| **First local response** | **~8–9 min** |\n\nDuring that window LiteLLM's `fallbacks` send `local-mistral` requests to\n`claude-fallback`, so clients still get an answer.\n\nGoing back to zero after the last request:\n\n- vLLM at 0 replicas: ~5 min.\n- GPU node removed by the Cluster Autoscaler: ~18 min.\n\nThe cold start is dominated by the image pull. The obvious next improvements\nare caching the vLLM image on the node (a custom AMI or a pre-pulled image)\nand keeping the model weights on a volume instead of downloading them on\nevery start."
+        }
+      ]
+    },
+    {
+      "id": "startup-trigger-terminating",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why does the startup trigger exclude terminating pods?",
+      "reference": "Counting terminating pods woke vLLM again after every scale-to-zero, in a loop.",
+      "answer": " The startup trigger excludes terminating pods to prevent counting them as waking vLLM after every scale-to-zero, which could result in a loop [1]. If a terminating pod is counted as a wake event, vLLM would be triggered to start, but since the pod is terminating, it won't publish the necessary metrics for vLLM to scale out, resulting in a stuck state [2]. By excluding terminating pods, the startup trigger only counts pods that are actually starting up and publishing the required metrics.",
+      "model": "local-mistral",
+      "seconds": 3.69,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.421,
+          "text": "iteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls \n\niteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls back to the raw value for series younger than the window). While vLLM\ncold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0\nalso needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`\nNodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own\nstartup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger\nmust keep excluding terminating pods: counting them woke vLLM after every\nscale-to-zero, in a loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request)."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.403,
+          "text": "**Scale-to-zero spans three layers.** The ScaledObject has three triggers:\n`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=\"local-mistral\"}`\nfrom LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads\n`vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A\nvLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.\nA third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod\nisn't Ready yet, for up to 20 minutes: otherwise gateway-demand expires ~7 minutes after\nthe last request and KEDA kills a slower cold start mid-load. Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,\nwhich doesn't count requests that failed because the backend was down. The query\nalso can't be a plain `increase()`: LiteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls "
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.403,
+          "text": "eates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing.\n\n**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back\nto on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`\n(overflow for platform pods beyond the fixed 2-node managed node group, which runs\nKarpenter itself). EC2NodeClasses find subnets and the node security group by the\n`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed\nname; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache\n(`snapshotID` + `volumeInitializationRate`) is set in-cluster by\n`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),\nbecause the snapshot is per account. Karpenter's Helm chart comes from an OCI registry\nregistered in `argocd-values.yaml`."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.387,
+          "text": "penter (`k8s/karpenter/`), which also falls back\nfrom spot to on-demand and launches nodes in the AZ of a pod's volume.\n\nOther findings from this run:\n\n- **Bottlerocket GPU nodes join faster:** Ready ~15 s after the EC2 node\n  object appears, ~50 s after the scale-up, vs ~1.5 min for AL2023.\n- **vLLM's own startup is now ~4 min, not ~2:** vLLM v0.30 adds a\n  `torch.compile` step (~27 s warm, ~44 s on the cold disk) and captures\n  CUDA graphs twice. That's the next target after the image pull.\n- **KEDA was scaling vLLM to zero mid-startup** (fixed): with a single\n  request, the demand trigger expires after ~7 minutes, before a 10-minute\n  cold start finishes. A `startup-in-progress` trigger now holds the replica\n  while its pod isn't Ready, for up to 20 minutes.\n- **Spot interruption vs. persistent volumes:** a platform spot node was\n  replaced in a different AZ and Qdrant/Grafana stayed Pending, since their\n  EBS volumes can't follow them across AZs. Not fixed: stateful workloads\n  need a node group per AZ, or volumes that can be recreated."
+        }
+      ]
+    },
+    {
+      "id": "node-removal",
+      "lang": "en",
+      "answerable": true,
+      "question": "How long does it take to remove an idle GPU node with Karpenter?",
+      "reference": "About 12 minutes after the last request: Karpenter removes the empty node 5 minutes after vLLM reaches 0, and the instance is gone ~7 minutes later (vs ~18 with the Cluster Autoscaler).",
+      "answer": " According to the context provided, Karpenter removes idle GPU nodes, but the time it takes for this to happen is not explicitly stated in the given passages. Therefore, I don't have enough information to answer that question.",
+      "model": "local-mistral",
+      "seconds": 2.4,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.639,
+          "text": "eates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing.\n\n**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back\nto on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`\n(overflow for platform pods beyond the fixed 2-node managed node group, which runs\nKarpenter itself). EC2NodeClasses find subnets and the node security group by the\n`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed\nname; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache\n(`snapshotID` + `volumeInitializationRate`) is set in-cluster by\n`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),\nbecause the snapshot is per account. Karpenter's Helm chart comes from an OCI registry\nregistered in `argocd-values.yaml`."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.557,
+          "text": "## Third run (2026-10-14): Karpenter, image cache that works\n\nGPU nodes now come from Karpenter (`k8s/karpenter/`) instead of a managed\nnode group + Cluster Autoscaler. Karpenter builds each launch from the\nEC2NodeClass, so the data volume's provisioned initialization rate actually\nreaches EC2 (verified on the volume: `InitializationType: provisioned-rate`,\n300 MiB/s, 100% before vLLM needed it). Same measurement script, single\nrequest, from zero vLLM pods and zero GPU nodes:\n\n| | Karpenter, no cache | Karpenter + snapshot (1) | Karpenter + snapshot (2) |\n|---|---|---|---|\n| KEDA sees the request | 41 s | 45 s | 22 s |\n| Karpenter decides (NodeClaim) | +12 s | +12 s | +11 s |\n| EC2 node object | +19 s | +32 s | +24 s |\n| Node Ready | +15 s | +14 s | +13 s |\n| Image pull | 4:41 | 0 (on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.501,
+          "text": "(`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:\n\n- **Karpenter's controller IAM policy exceeds the 6,144-character limit of a\n  managed policy**: created as an inline role policy (`enable_inline_policy`).\n- **The KEDA startup trigger added on the second run caused a scale loop**:\n  a pod being deleted isn't Ready either, so after every scale-to-zero the\n  terminating pod counted as \"starting\" and woke vLLM again 30 s later. It\n  only showed once the image cache made vLLM Ready in ~3 minutes (it then\n  went back to zero two minutes later, over and over), and kept the GPU node\n  up ~1 hour longer than needed. Terminating pods no longer count.\n- Karpenter logged \"no subnets found\" for a few seconds after starting, before\n  it had discovered the tagged subnets; it resolved by itself.\n\nNot measured this time: warm throughput/TTFT (unchanged from the second run,\nsame GPU and vLLM version)."
+        },
+        {
+          "n": 4,
+          "source": "README.md",
+          "heading": "Getting started (recommended order)",
+          "score": 0.468,
+          "text": "pps; from then on Argo CD deploys everything else from this repo\n      (`k8s/argocd/apps/`), in order, excluding the `*-local*` files.\n3. **Important:\n\npps; from then on Argo CD deploys everything else from this repo\n      (`k8s/argocd/apps/`), in order, excluding the `*-local*` files.\n3. **Important:** when you're done, run `./scripts/teardown-eks.sh` (deletes the\n   apps, Karpenter's nodes and the EBS volumes behind PVCs, which `terraform destroy`\n   would orphan), then `terraform destroy` in `terraform/`. Karpenter removes idle GPU\n   nodes, but the EKS control plane and the platform nodes are billed hourly while they\n   exist."
+        }
+      ]
+    },
+    {
+      "id": "spot-fallback",
+      "lang": "en",
+      "answerable": true,
+      "question": "What happens when there is no spot GPU capacity?",
+      "reference": "EC2 answers UnfulfillableCapacity and Karpenter retries on on-demand automatically, ~12 s later.",
+      "answer": " According to the context, when there is no spot GPU capacity, the application falls back to using an on-demand GPU node [3]. The cost of using an on-demand GPU node is higher than using a spot GPU node [3]. Therefore, when there is no spot GPU capacity, the cost of running the application increases. [1] [3]",
+      "model": "local-mistral",
+      "seconds": 2.47,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.425,
+          "text": "*Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available.\n\nWhere the line falls between the two depends on the external provider's\ncurrent per-token pricing and on your own traffic. The Grafana dashboard\n`k8s/observability/grafana-dashboard-llm-cost.yaml` computes both sides live:\nset the provider's API prices and the GPU node's hourly cost in its variables."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Setup",
+          "score": 0.396,
+          "text": "## Setup\n\n| | |\n|---|---|\n| GPU node | `g4dn.xlarge` (1x NVIDIA T4, 16 GB), **on-demand**: spot had no capacity that day (placement score 1 in every AZ) |\n| Model | `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` (4-bit AWQ), served by vLLM as `local-mistral` |\n| Path | client → LiteLLM gateway → vLLM (every request went through the gateway) |\n| Workload | short prompts (~17 input tokens), `max_tokens: 128` (~128 output tokens per request) |\n| Prices used | on-demand $0.526/h; spot ~$0.27/h (us-east-1 price at the time, for comparison) |"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.39,
+          "text": "## Conclusion\n\nThe cost per token depends almost entirely on utilization. The same GPU costs\n$2.90 per million output tokens with one request at a time and $0.43 with\neight. And while it sits idle, the per-token cost is effectively unbounded:\na `g4dn.xlarge` on-demand kept up 24/7 costs ~$384/month whether it serves\nanything or not.\n\nThat shapes the design:\n\n- **Low or bursty traffic:** scale vLLM and its GPU node to zero, accept an\n  ~8-minute cold start, and let the gateway route to an external provider\n  meanwhile. You pay for the GPU only while there's demand.\n- **Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.376,
+          "text": "he\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero.\n\nWhat would actually help, for a next run: nodes that honor the launch\ntemplate as written (Karpenter or a self-managed node group) so the\ninitialization rate applies, or pulling the image from ECR in the same region\n(pull-through cache) instead of Docker Hub. The repo went with the first:\nGPU nodes now come from Karpenter (`k8s/karpenter/`), which also falls back\nfrom spot to on-demand and launches nodes in the AZ of a pod's volume.\n\nOther findings from this run:"
+        }
+      ]
+    },
+    {
+      "id": "cold-start-karpenter",
+      "lang": "en",
+      "answerable": true,
+      "question": "How long does a cold start take with Karpenter and the image cache?",
+      "reference": "About 5-6 minutes, down from ~10-11 without the image cache.",
+      "answer": " Based on the context provided, a cold start with Karpenter and the image cache takes approximately 5 minutes and 14 seconds (5:14), as shown in the third run on 2026-10-14 in the cost comparison document [3].",
+      "model": "local-mistral",
+      "seconds": 1.63,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.607,
+          "text": "## Third run (2026-10-14): Karpenter, image cache that works\n\nGPU nodes now come from Karpenter (`k8s/karpenter/`) instead of a managed\nnode group + Cluster Autoscaler. Karpenter builds each launch from the\nEC2NodeClass, so the data volume's provisioned initialization rate actually\nreaches EC2 (verified on the volume: `InitializationType: provisioned-rate`,\n300 MiB/s, 100% before vLLM needed it). Same measurement script, single\nrequest, from zero vLLM pods and zero GPU nodes:\n\n| | Karpenter, no cache | Karpenter + snapshot (1) | Karpenter + snapshot (2) |\n|---|---|---|---|\n| KEDA sees the request | 41 s | 45 s | 22 s |\n| Karpenter decides (NodeClaim) | +12 s | +12 s | +11 s |\n| EC2 node object | +19 s | +32 s | +24 s |\n| Node Ready | +15 s | +14 s | +13 s |\n| Image pull | 4:41 | 0 (on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |"
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.542,
+          "text": "eates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing.\n\n**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back\nto on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`\n(overflow for platform pods beyond the fixed 2-node managed node group, which runs\nKarpenter itself). EC2NodeClasses find subnets and the node security group by the\n`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed\nname; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache\n(`snapshotID` + `volumeInitializationRate`) is set in-cluster by\n`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),\nbecause the snapshot is per account. Karpenter's Helm chart comes from an OCI registry\nregistered in `argocd-values.yaml`."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.507,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.498,
+          "text": "## Second run (2026-10-13): trying to cut the cold start\n\nGoal: remove the image pull by creating the GPU nodes' data volume from an\nEBS snapshot with the vLLM image already pulled (Bottlerocket GPU nodes,\n`scripts/build-gpu-image-cache.sh`). Every number below comes from\n`scripts/measure-cold-start.py` with a single request, from zero vLLM pods\nand zero GPU nodes. Same cluster, same day, on-demand `g4dn.xlarge`.\n\n| | No cache (baseline) | Snapshot | Snapshot + 300 MiB/s init rate |\n|---|---|---|---|\n| Request → GPU node Ready | 1:31 | 1:42 | 1:48 |\n| Image pull | 4:24 | 0 (already on disk) | 0 (already on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |"
+        }
+      ]
+    },
+    {
+      "id": "snapshot-slower",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why did the EBS snapshot make the cold start slower?",
+      "reference": "A volume restored from a snapshot fetches each block from S3 the first time it's read, and vLLM reads thousands of files at startup.",
+      "answer": " The EBS snapshot made the cold start slower because during the slow runs, the container used under 0.6 CPU cores with no throttling, and the volume served only ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. When the volume was 21% initialized after 15 minutes, it was expected to have a provisioned volume initialization rate, but the EKS managed node groups copied the launch template and dropped `VolumeInitializationRate`, resulting in the third run behaving like the second. [1]\n\nThe second issue mentioned in the context was that EBS volumes can't follow nodes across AZs, and stateful workloads need a node group per AZ or volumes that can be recreated. [2]\n\nTo improve the cold start performance, nodes that honor the launch template as written, such as Karpenter or a self-managed node group, would help so that the initialization rate applies. Alternatively, pulling the image from ECR in the same region instead of Docker Hub could also be an option. [4]\n\nThe findings from this run also showed that the throughput was ~9% below the first run's, but this difference was attributed to run-to-run noise rather than a regression due to differences in the prompt, streaming, and node. [3]",
+      "model": "local-mistral",
+      "seconds": 6.87,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.563,
+          "text": "y on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |\n\nThe snapshot made the cold start slower. A volume restored from a snapshot\nfetches each block from S3 the first time it's read, and vLLM reads\nthousands of PyTorch/CUDA files at startup: during the slow runs the\ncontainer used under 0.6 CPU cores with no throttling, and the volume served\nonly ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. After 15\nminutes the volume was 21% initialized.\n\nThe fix should have been a provisioned volume initialization rate (the whole\n~30 GiB snapshot in ~100 s), but EKS managed node groups copy the launch\ntemplate into their own and drop `VolumeInitializationRate`: ours had 300,\nthe copy EKS launches from doesn't, so the third run behaved like the\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.503,
+          "text": "g, since their\n  EBS volumes can't follow them across AZs. Not fixed: stateful workloads\n  need a node group per AZ, or volumes that can be recreated.\n\nWarm performance (`scripts/benchmark.py`, streaming through LiteLLM,\n128 output tokens per request):\n\n| Concurrent requests | Output tokens/s | TTFT p50 | TTFT p95 | Latency p50 | Latency p95 |\n|---|---|---|---|---|---|\n| 1 | 47 | 0.31 s | 0.31 s | 2.74 s | 2.74 s |\n| 4 | 172 | 0.36 s | 0.42 s | 2.97 s | 3.02 s |\n| 8 | 310 | 0.41 s | 0.45 s | 3.26 s | 3.36 s |\n\nThroughput is ~9% below the first run's (342 tok/s at 8); the prompt,\nstreaming and node differ between runs, so treat it as run-to-run noise\nrather than a regression.\n\nWhat this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold\nstarts, the snapshot builds and the teardown):"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.5,
+          "text": "## Second run (2026-10-13): trying to cut the cold start\n\nGoal: remove the image pull by creating the GPU nodes' data volume from an\nEBS snapshot with the vLLM image already pulled (Bottlerocket GPU nodes,\n`scripts/build-gpu-image-cache.sh`). Every number below comes from\n`scripts/measure-cold-start.py` with a single request, from zero vLLM pods\nand zero GPU nodes. Same cluster, same day, on-demand `g4dn.xlarge`.\n\n| | No cache (baseline) | Snapshot | Snapshot + 300 MiB/s init rate |\n|---|---|---|---|\n| Request → GPU node Ready | 1:31 | 1:42 | 1:48 |\n| Image pull | 4:24 | 0 (already on disk) | 0 (already on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.425,
+          "text": "he\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero.\n\nWhat would actually help, for a next run: nodes that honor the launch\ntemplate as written (Karpenter or a self-managed node group) so the\ninitialization rate applies, or pulling the image from ECR in the same region\n(pull-through cache) instead of Docker Hub. The repo went with the first:\nGPU nodes now come from Karpenter (`k8s/karpenter/`), which also falls back\nfrom spot to on-demand and launches nodes in the AZ of a pod's volume.\n\nOther findings from this run:"
+        }
+      ]
+    },
+    {
+      "id": "init-rate-dropped",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why didn't the volume initialization rate work with EKS managed node groups?",
+      "reference": "EKS managed node groups copy the launch template and drop VolumeInitializationRate, so the volume wasn't initialized at the provisioned rate.",
+      "answer": " According to the context [1], the EKS managed node groups copy the launch template into their own and drop the `VolumeInitializationRate` setting. In the third run [2], the launch templates were honored by Karpenter, which allowed the data volume's provisioned initialization rate to reach EC2 and apply effectively.",
+      "model": "local-mistral",
+      "seconds": 3.02,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.557,
+          "text": "y on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |\n\nThe snapshot made the cold start slower. A volume restored from a snapshot\nfetches each block from S3 the first time it's read, and vLLM reads\nthousands of PyTorch/CUDA files at startup: during the slow runs the\ncontainer used under 0.6 CPU cores with no throttling, and the volume served\nonly ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. After 15\nminutes the volume was 21% initialized.\n\nThe fix should have been a provisioned volume initialization rate (the whole\n~30 GiB snapshot in ~100 s), but EKS managed node groups copy the launch\ntemplate into their own and drop `VolumeInitializationRate`: ours had 300,\nthe copy EKS launches from doesn't, so the third run behaved like the\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.451,
+          "text": "## Third run (2026-10-14): Karpenter, image cache that works\n\nGPU nodes now come from Karpenter (`k8s/karpenter/`) instead of a managed\nnode group + Cluster Autoscaler. Karpenter builds each launch from the\nEC2NodeClass, so the data volume's provisioned initialization rate actually\nreaches EC2 (verified on the volume: `InitializationType: provisioned-rate`,\n300 MiB/s, 100% before vLLM needed it). Same measurement script, single\nrequest, from zero vLLM pods and zero GPU nodes:\n\n| | Karpenter, no cache | Karpenter + snapshot (1) | Karpenter + snapshot (2) |\n|---|---|---|---|\n| KEDA sees the request | 41 s | 45 s | 22 s |\n| Karpenter decides (NodeClaim) | +12 s | +12 s | +11 s |\n| EC2 node object | +19 s | +32 s | +24 s |\n| Node Ready | +15 s | +14 s | +13 s |\n| Image pull | 4:41 | 0 (on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.434,
+          "text": "he\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero.\n\nWhat would actually help, for a next run: nodes that honor the launch\ntemplate as written (Karpenter or a self-managed node group) so the\ninitialization rate applies, or pulling the image from ECR in the same region\n(pull-through cache) instead of Docker Hub. The repo went with the first:\nGPU nodes now come from Karpenter (`k8s/karpenter/`), which also falls back\nfrom spot to on-demand and launches nodes in the AZ of a pod's volume.\n\nOther findings from this run:"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.43,
+          "text": "d the tagged subnets; it resolved by itself.\n\nNot measured this time: warm throughput/TTFT (unchanged from the second run,\nsame GPU and vLLM version).\n\nWhat this run cost (Cost Explorer; ~2.5 hours of cluster time, including the\n~1 hour the KEDA scale loop kept a GPU node up):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU nodes, snapshot builder) | $0.97 |\n| EC2 other (EBS volumes, snapshot, volume initialization) | $0.82 |\n| EKS control plane | $0.24 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.03 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$2.12** |\n\nEC2 other went from $0.20 on the second run to $0.82. By usage type:\n\n| Usage type | Second run | Third run |\n|---|---|---|\n| Provisioned volume initialization | — | $0.21 (58.7 GB: 2 volumes × 29.4 GB) |\n| Regional data transfer | $0.15 (15.3 GB) | $0.56 (55.9 GB) |\n| gp3 volumes + snapshot | $0.05 | $0.04 |"
+        }
+      ]
+    },
+    {
+      "id": "throughput-8",
+      "lang": "en",
+      "answerable": true,
+      "question": "What throughput does vLLM reach with 8 concurrent requests?",
+      "reference": "342 output tokens/s on the first run (310 on the second).",
+      "answer": " vLLM reaches a throughput of 342 output tokens per second with 8 concurrent requests. [1]",
+      "model": "local-mistral",
+      "seconds": 1.87,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Throughput and latency",
+          "score": 0.727,
+          "text": "## Throughput and latency\n\n| Concurrent requests | Output tokens/s | Requests/s | p50 latency |\n|---|---|---|---|\n| 1 | 50 | 0.39 | 2.54 s |\n| 4 | 186 | 1.45 | 2.75 s |\n| 8 | 342 | 2.67 | 2.98 s |\n\nGoing from 1 to 8 concurrent requests multiplies throughput by ~6.8x while p50\nlatency only grows from 2.5 s to 3 s: vLLM's continuous batching keeps the same\nGPU busy with several requests at once."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.564,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.553,
+          "text": "- **Scale-to-zero, end to end:** request → KEDA 0→1 → Cluster Autoscaler adds\n  a GPU node from 0 → first local response in ~8–9 min (mostly the 8.7 GB\n  image pull). Idle, vLLM is back at 0 in ~5 min and the GPU node is gone in ~18 min.\n- **The whole validation session cost $1.48** (before tax): apply, benchmark,\n  scale-to-zero test and teardown, ~2 hours of cluster time.\n- **Time to first token ~0.3-0.4 s** warm (second run), for full answers of\n  ~2.7-3.3 s.\n- **Cold start cut from ~10-11 to ~5-6 minutes** (third run): GPU nodes from\n  Karpenter, with the vLLM image pre-pulled on an EBS snapshot initialized at\n  300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS\n  managed node group, which drops the initialization rate. Details in\n  [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-works).\n- **RAG retrieval measured in CI** on 30 questions with known answers:\n  switching to a multilingual embedding model took hi"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.532,
+          "text": "## Conclusion\n\nThe cost per token depends almost entirely on utilization. The same GPU costs\n$2.90 per million output tokens with one request at a time and $0.43 with\neight. And while it sits idle, the per-token cost is effectively unbounded:\na `g4dn.xlarge` on-demand kept up 24/7 costs ~$384/month whether it serves\nanything or not.\n\nThat shapes the design:\n\n- **Low or bursty traffic:** scale vLLM and its GPU node to zero, accept an\n  ~8-minute cold start, and let the gateway route to an external provider\n  meanwhile. You pay for the GPU only while there's demand.\n- **Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available."
+        }
+      ]
+    },
+    {
+      "id": "ttft",
+      "lang": "en",
+      "answerable": true,
+      "question": "What is the time to first token when vLLM is warm?",
+      "reference": "About 0.31 s at concurrency 1 (0.3-0.4 s warm).",
+      "answer": " The time to first token when vLLM is warm is approximately 0.3-0.4 seconds. [1][3]",
+      "model": "local-mistral",
+      "seconds": 1.89,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.552,
+          "text": "iteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls \n\niteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls back to the raw value for series younger than the window). While vLLM\ncold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0\nalso needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`\nNodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own\nstartup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger\nmust keep excluding terminating pods: counting them woke vLLM after every\nscale-to-zero, in a loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request)."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.544,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.535,
+          "text": "- **Scale-to-zero, end to end:** request → KEDA 0→1 → Cluster Autoscaler adds\n  a GPU node from 0 → first local response in ~8–9 min (mostly the 8.7 GB\n  image pull). Idle, vLLM is back at 0 in ~5 min and the GPU node is gone in ~18 min.\n- **The whole validation session cost $1.48** (before tax): apply, benchmark,\n  scale-to-zero test and teardown, ~2 hours of cluster time.\n- **Time to first token ~0.3-0.4 s** warm (second run), for full answers of\n  ~2.7-3.3 s.\n- **Cold start cut from ~10-11 to ~5-6 minutes** (third run): GPU nodes from\n  Karpenter, with the vLLM image pre-pulled on an EBS snapshot initialized at\n  300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS\n  managed node group, which drops the initialization rate. Details in\n  [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-works).\n- **RAG retrieval measured in CI** on 30 questions with known answers:\n  switching to a multilingual embedding model took hi"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.532,
+          "text": "## Conclusion\n\nThe cost per token depends almost entirely on utilization. The same GPU costs\n$2.90 per million output tokens with one request at a time and $0.43 with\neight. And while it sits idle, the per-token cost is effectively unbounded:\na `g4dn.xlarge` on-demand kept up 24/7 costs ~$384/month whether it serves\nanything or not.\n\nThat shapes the design:\n\n- **Low or bursty traffic:** scale vLLM and its GPU node to zero, accept an\n  ~8-minute cold start, and let the gateway route to an external provider\n  meanwhile. You pay for the GPU only while there's demand.\n- **Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available."
+        }
+      ]
+    },
+    {
+      "id": "total-cost",
+      "lang": "en",
+      "answerable": true,
+      "question": "What did all the EKS runs cost in total?",
+      "reference": "$6.12 for all four EKS runs ($1.48 + $1.45 + $2.12 + $1.07).",
+      "answer": " The total cost of all four EKS runs was $6.12. [1][2][3]",
+      "model": "local-mistral",
+      "seconds": 0.71,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost and performance — results from a real EKS run",
+          "score": 0.53,
+          "text": "# Cost and performance — results from a real EKS run\n\nMeasured on 2026-10-06 on a real EKS 1.36 cluster built from this repo, then torn\ndown the same day. Everything below comes from that single session; rerun it\nbefore relying on the numbers for anything else."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.512,
+          "text": "se\nrather than a regression.\n\nWhat this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold\nstarts, the snapshot builds and the teardown):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node, snapshot builder) | $0.91 |\n| EKS control plane | $0.24 |\n| EC2 other (EBS volumes and the snapshot) | $0.20 |\n| KMS (includes a key not created by this project) | $0.06 |\n| VPC (public IPv4 addresses) | $0.04 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.45** |"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.508,
+          "text": "eLLM now drops unsupported parameters\n  (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change\n  needed a manual rollout restart.\n\nWhat this run cost (Cost Explorer; ~2 hours of cluster time, three image\nreleases, ~45 minutes of GPU):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node) | $0.66 |\n| EKS control plane | $0.16 |\n| EC2 other (EBS volumes, data transfer) | $0.16 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.02 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.07** |\n\nAll four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**."
+        },
+        {
+          "n": 4,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.5,
+          "text": "## Results from a real EKS run\n\nMeasured on EKS 1.36 with one `g4dn.xlarge` (NVIDIA T4) serving Mistral-7B AWQ\nthrough the LiteLLM gateway. Full numbers, method and caveats in\n[docs/cost-comparison.md](docs/cost-comparison.md).\n\n| Concurrent requests | Output tokens/s | p50 latency | Cost per 1M output tokens (on-demand / spot) |\n|---|---|---|---|\n| 1 | 50 | 2.54 s | $2.90 / $1.49 |\n| 4 | 186 | 2.75 s | $0.79 / $0.40 |\n| 8 | 342 | 2.98 s | $0.43 / $0.22 |"
+        }
+      ]
+    },
+    {
+      "id": "second-run-cost",
+      "lang": "en",
+      "answerable": true,
+      "question": "What did the second EKS session cost?",
+      "reference": "$1.45 before tax.",
+      "answer": " The second EKS session cost $1.45 before tax, as stated in the context [2].",
+      "model": "local-mistral",
+      "seconds": 0.7,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "What the whole session cost",
+          "score": 0.442,
+          "text": "## What the whole session cost\n\nThe full AWS bill for the day (Cost Explorer), from `terraform apply` through\nthe benchmark, the scale-to-zero test and the teardown, ~2 hours of cluster time:\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes + GPU node) | $0.61 |\n| EC2 other (EBS volumes) | $0.33 |\n| KMS (includes a key not created by this project) | $0.30 |\n| EKS control plane | $0.22 |\n| VPC (public IPv4 addresses) | $0.03 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.48** |"
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.415,
+          "text": "se\nrather than a regression.\n\nWhat this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold\nstarts, the snapshot builds and the teardown):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node, snapshot builder) | $0.91 |\n| EKS control plane | $0.24 |\n| EC2 other (EBS volumes and the snapshot) | $0.20 |\n| KMS (includes a key not created by this project) | $0.06 |\n| VPC (public IPv4 addresses) | $0.04 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.45** |"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.407,
+          "text": "d the tagged subnets; it resolved by itself.\n\nNot measured this time: warm throughput/TTFT (unchanged from the second run,\nsame GPU and vLLM version).\n\nWhat this run cost (Cost Explorer; ~2.5 hours of cluster time, including the\n~1 hour the KEDA scale loop kept a GPU node up):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU nodes, snapshot builder) | $0.97 |\n| EC2 other (EBS volumes, snapshot, volume initialization) | $0.82 |\n| EKS control plane | $0.24 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.03 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$2.12** |\n\nEC2 other went from $0.20 on the second run to $0.82. By usage type:\n\n| Usage type | Second run | Third run |\n|---|---|---|\n| Provisioned volume initialization | — | $0.21 (58.7 GB: 2 volumes × 29.4 GB) |\n| Regional data transfer | $0.15 (15.3 GB) | $0.56 (55.9 GB) |\n| gp3 volumes + snapshot | $0.05 | $0.04 |"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.395,
+          "text": "eLLM now drops unsupported parameters\n  (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change\n  needed a manual rollout restart.\n\nWhat this run cost (Cost Explorer; ~2 hours of cluster time, three image\nreleases, ~45 minutes of GPU):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node) | $0.66 |\n| EKS control plane | $0.16 |\n| EC2 other (EBS volumes, data transfer) | $0.16 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.02 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.07** |\n\nAll four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**."
+        }
+      ]
+    },
+    {
+      "id": "image-signature",
+      "lang": "en",
+      "answerable": true,
+      "question": "How does the cluster make sure the RAG image comes from CI?",
+      "reference": "CI signs it keylessly with cosign, and Kyverno's require-image-signature policy (Enforce) only admits ghcr.io/yack300 images signed by this repo's ci.yml on main, pinning them to the verified digest.",
+      "answer": " The cluster ensures that the RAG image comes from CI through the use of image signing and admission control by Kyverno. The image is signed keylessly by CI using the workflow's GitHub OIDC identity, and the signed image is admitted by Kyverno in Enforce using the verified digest. This process is repeated for each new version of the RAG image that is shipped. [1], [3]",
+      "model": "local-mistral",
+      "seconds": 2.24,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.553,
+          "text": " loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request).\n\n**CI gates main; Argo CD deploys.** `.github/workflows/ci.yml` runs scans (Checkov,\nTrivy fs, GitLeaks) and, once they pass, validation (kubeconform and `kyverno apply`\nagainst `k8s/`, `terraform validate`/`fmt`) plus the `rag-image` job: unit tests, a\ncheck that `k8s/rag/` uses the tag in `apps/rag/VERSION`, build, retrieval evaluation\nagainst `apps/rag/eval/baseline.json`, Trivy image scan, and\non main only, push to GHCR and keyless `cosign sign`. There's no deploy step: Argo CD\nsyncs from `main`. Image tags are immutable: to release RAG changes, bump\n`apps/rag/VERSION` and the tags in `k8s/rag/` in the same commit (CI skips pushing a\ntag that already exists). Cosign stays on v2 on purpose: v3 writes signatures only as\nOCI referrers in the new bundle format, which Kyverno's `verifyImages` doesn't read and\nGHCR can't serve."
+        },
+        {
+          "n": 2,
+          "source": "README.md",
+          "heading": "Current status",
+          "score": 0.531,
+          "text": "## Current status\n\nValidated end to end on a real AWS account (2026-10-06): `terraform apply`,\nArgo CD sync of every component, scale-to-zero and wake-up through the\nCluster Autoscaler, benchmark, and teardown with no resources left behind.\n\nFourth run (2026-10-20): the RAG service on EKS, with its image signed in CI\nand admitted by Kyverno in Enforce only with that signature (pinned to the\nverified digest); answers come from Mistral-7B through LiteLLM.\n\nThird run (2026-10-14): GPU nodes moved from a managed node group + Cluster\nAutoscaler to Karpenter, validated on EKS: spot with automatic on-demand\nfallback, image cache with a provisioned initialization rate (cold start\n~5-6 min), GPU node removed ~12 min after the last request."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.507,
+          "text": "## Fourth run (2026-10-20): RAG service and signed images\n\nThe RAG service (`apps/rag/`) on EKS for the first time, with its image\nbuilt, scanned and signed keylessly by CI and `require-image-signature.yaml`\nin Enforce.\n\n**Supply chain, end to end.** CI pushed `ghcr.io/yack300/llm-platform-rag`\nand signed it with the workflow's GitHub OIDC identity; `cosign verify`\naccepts it for `ci.yml@refs/heads/main` and rejects it for any other ref.\nIn the cluster Kyverno admitted the pods and rewrote their image to the\nverified digest (`...:0.1.2@sha256:...`). Two more versions shipped during\nthe session the same way (0.1.1, 0.1.2): a commit bumping `apps/rag/VERSION`\nand `k8s/rag/` together, CI publishing and signing, Argo CD syncing.\n\n**Answer quality**, Mistral-7B AWQ through LiteLLM, `top_k=4`, 1.5-6 s per\nanswer:"
+        },
+        {
+          "n": 4,
+          "source": "docs/retrieval-eval.md",
+          "heading": "In CI",
+          "score": 0.499,
+          "text": "## In CI\n\nThe `rag-image` job runs the evaluation on the image it just built (its\nmodel, chunking and docs), before scanning and publishing it, and fails if\nany metric drops below `apps/rag/eval/baseline.json`:\n\n| Minimum | Measured |\n|---|---|\n| all hit@k 0.85 | 0.90 |\n| all MRR 0.63 | 0.672 |\n| English hit@k 0.88 | 0.92 |\n| Spanish hit@k 0.60 | 0.80 |\n\nMeasured with this document in the corpus: adding it moved MRR from 0.694\nto 0.672 (it now outranks the source passage for a few questions about the\nRAG service) without changing hit@k. Each minimum lets one question slip: the corpus is the docs themselves, so\nevery doc change re-ranks a little. Raise them when retrieval improves. Going\nback to bge-small would fail all four. The full per-question table\ngoes to the job summary. It takes ~40 s on a laptop's 2 CPUs.\n\nLocally, with the image built (`docker build -f apps/rag/Dockerfile -t\nllm-platform-rag:dev .`):"
+        }
+      ]
+    },
+    {
+      "id": "cosign-v2",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why does CI use cosign v2 instead of v3?",
+      "reference": "cosign v3 writes signatures only as OCI referrers in the new bundle format, which Kyverno's verifyImages doesn't read and GHCR can't serve.",
+      "answer": " According to the context provided, CI uses cosign v2 instead of v3 because v3 writes signatures only as OCI referrers in the new bundle format, which Kyverno's `verifyImages` doesn't read and GHCR can't serve [1].",
+      "model": "local-mistral",
+      "seconds": 1.65,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.409,
+          "text": " loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request).\n\n**CI gates main; Argo CD deploys.** `.github/workflows/ci.yml` runs scans (Checkov,\nTrivy fs, GitLeaks) and, once they pass, validation (kubeconform and `kyverno apply`\nagainst `k8s/`, `terraform validate`/`fmt`) plus the `rag-image` job: unit tests, a\ncheck that `k8s/rag/` uses the tag in `apps/rag/VERSION`, build, retrieval evaluation\nagainst `apps/rag/eval/baseline.json`, Trivy image scan, and\non main only, push to GHCR and keyless `cosign sign`. There's no deploy step: Argo CD\nsyncs from `main`. Image tags are immutable: to release RAG changes, bump\n`apps/rag/VERSION` and the tags in `k8s/rag/` in the same commit (CI skips pushing a\ntag that already exists). Cosign stays on v2 on purpose: v3 writes signatures only as\nOCI referrers in the new bundle format, which Kyverno's `verifyImages` doesn't read and\nGHCR can't serve."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.313,
+          "text": "## Fourth run (2026-10-20): RAG service and signed images\n\nThe RAG service (`apps/rag/`) on EKS for the first time, with its image\nbuilt, scanned and signed keylessly by CI and `require-image-signature.yaml`\nin Enforce.\n\n**Supply chain, end to end.** CI pushed `ghcr.io/yack300/llm-platform-rag`\nand signed it with the workflow's GitHub OIDC identity; `cosign verify`\naccepts it for `ci.yml@refs/heads/main` and rejects it for any other ref.\nIn the cluster Kyverno admitted the pods and rewrote their image to the\nverified digest (`...:0.1.2@sha256:...`). Two more versions shipped during\nthe session the same way (0.1.1, 0.1.2): a commit bumping `apps/rag/VERSION`\nand `k8s/rag/` together, CI publishing and signing, Argo CD syncing.\n\n**Answer quality**, Mistral-7B AWQ through LiteLLM, `top_k=4`, 1.5-6 s per\nanswer:"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.313,
+          "text": "d `k8s/rag/` together, CI publishing and signing, Argo CD syncing.\n\n**Answer quality**, Mistral-7B AWQ through LiteLLM, `top_k=4`, 1.5-6 s per\nanswer:\n\n| Question | Result |\n|---|---|\n| How does the platform wake vLLM up from zero? | Partial: the core is right, but it blends two passages into a \"bug\" that doesn't exist |\n| Why did the EBS snapshot make the cold start slower? | Correct and complete |\n| How long is a cold start with Karpenter and the cache? | Correct (5-6 min), cited |\n| What did the second EKS session cost? | Correct ($1.45 with the breakdown) |\n| Which Kubernetes version does the cluster run? | Retrieval miss: the fact is in the docs but not in the top 4 chunks; it said it didn't know |\n| What is the capital of France? / today's date (in Spanish) | Correctly declined |"
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Commands",
+          "score": 0.306,
+          "text": "HEMAS`. There's deliberately no `-ignore-missing-schemas`: a new\nCRD kind without a schema in that catalog fails CI instead of being skipped silently.\n\nCheckov exceptions are deliberate and documented inline as `#checkov:skip=ID:reason`\n(mostly controls that add recurring AWS cost, like KMS keys or cross-region\nreplication, on the tiny state bucket). Add new skips the same way, with a reason,\nrather than loosening the CI command. Trivy runs its default `fs` scanners\n(vulnerabilities and secrets) only; enabling `--scanners misconfig` currently\nreports ~10 K8s hardening findings (e.g. readOnlyRootFilesystem) that aren't fixed."
+        }
+      ]
+    },
+    {
+      "id": "alias-swap",
+      "lang": "en",
+      "answerable": true,
+      "question": "How does ingestion avoid serving a half-built index?",
+      "reference": "Each ingestion writes a new collection and atomically repoints the platform-docs alias, deleting older versions.",
+      "answer": " Each ingestion writes a new collection and atomically repoints the `platform-docs` alias, deleting older versions [2]. This way, queries never see a half-built index.",
+      "model": "local-mistral",
+      "seconds": 1.12,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.375,
+          "text": "gestion**: 60 chunks in 18 s on a platform node (it took minutes on the\n8 GB laptop, starved by the rest of the local stack).\n\nBugs found on this run:\n\n- **Ingestion OOMKilled** under its 768 MiB limit: ONNX memory grows with the\n  batch (peak 834 MiB at 32 chunks per call, 452 MiB at 8). Batch now 8.\n- **A failing Sync hook blocks newer revisions**: the ingestion Job is an\n  Argo CD Sync hook, and while it kept failing on 0.1.0 the sync operation\n  stayed Running on the old revision, so the fixed 0.1.1 commit wasn't picked\n  up until the operation was terminated by hand. The failed attempts left 12\n  half-built collections; the next successful ingestion removed them all.\n- **Mistral's chat template rejects a system message** (400 from vLLM); the\n  local Ollama mock accepted it. The prompt is now a single user message.\n- **claude-fallback rejected `temperature=0`** (claude-sonnet-5 only accepts\n  1), for any gateway client: LiteLLM now drops unsupported parameters\n  (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change\n  needed a manual rollout restart."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.351,
+          "text": "**RAG (`apps/rag/`, `k8s/rag/`).** One image, two entrypoints: the ingestion Job\n(`python -m rag.ingest`) indexes the project's own docs (README, CLAUDE.md, docs/,\ncopied into the image at build time, so the index matches the image version) and the\nAPI (`POST /ask`) retrieves from Qdrant and answers through LiteLLM like any client.\nEmbeddings run on CPU with fastembed; the model is baked into the image and pods run\nwith `HF_HUB_OFFLINE=1`. Each ingestion writes a new collection and atomically\nrepoints the `platform-docs` alias, deleting older versions, so queries never see a\nhalf-built index. On EKS the Job is an Argo CD Sync hook (Job templates are\nimmutable); `require-image-signature.yaml` admits `ghcr.io/yack300/*` only with a\nsignature from this repo's ci.yml on main. Locally, `deploy-local.sh` builds the image\nas `llm-platform-rag:dev` and loads it into kind, a name that policy doesn't match.\nPrompts go as a single user message: Mistral's chat template rejects a system role.\nThe e"
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Current status",
+          "score": 0.349,
+          "text": " a ConfigMap change (no config checksum on its\n  Deployment); a failing ingestion Sync hook blocks newer revisions until the\n  sync is terminated.\n- O\n\n a ConfigMap change (no config checksum on its\n  Deployment); a failing ingestion Sync hook blocks newer revisions until the\n  sync is terminated.\n- OpenCost (infra-side cost) isn't installed yet."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.339,
+          "text": " in the docs but not in the top 4 chunks; it said it didn't know |\n| What is the capital of France? / today's date (in Spanish) | Correctly declined |\n\n4 of 6 correct, 1 partial, 1 retrieval miss, no invented answers.\nOff-topic questions score ~0.4-0.5 similarity against ~0.75-0.8 for answerable\nones, so a similarity threshold could skip the model call altogether. The\nembedding model is English-only (`bge-small-en`): Spanish questions retrieve\nworse and get English answers. Measuring changes like these against a fixed\nquestion set is the next project (evaluation in CI).\n\n**Ingestion**: 60 chunks in 18 s on a platform node (it took minutes on the\n8 GB laptop, starved by the rest of the local stack).\n\nBugs found on this run:"
+        }
+      ]
+    },
+    {
+      "id": "single-user-message",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why is the prompt sent as a single user message?",
+      "reference": "Mistral's chat template served by vLLM rejects a system role (400), so everything goes in one user message.",
+      "answer": " According to the context in [1], the prompt goes as a single user message because Mistral's chat template rejects a system role. Therefore, the prompt is sent as a single user message to avoid system roles and ensure the prompt template accepts it. [1]",
+      "model": "local-mistral",
+      "seconds": 1.47,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.222,
+          "text": "v` and loads it into kind, a name that policy doesn't match.\nPrompts go as a single user message: Mistral's chat template rejects a system role.\nThe embedding model is `google/embeddinggemma-300m` with task prefixes\n(`QUERY_PREFIX`/`DOCUMENT_PREFIX`), chosen over bge-small-en with `rag.evaluate`\n(docs/retrieval-eval.md): ~850 MiB resident, hence the 1.5 GiB limits in `k8s/rag/`.\nChanging the model, prefixes, chunking or the docs themselves changes retrieval, and CI\nfails the image below `apps/rag/eval/baseline.json`; a doc edit that removes a\nquestion's `evidence` text fails it too (update `eval/questions.yaml`). Answer quality is a separate,\nmanual step (`.github/workflows/judge.yml`, Claude as judge via promptfoo), not a CI gate:\nit costs money and isn't deterministic. Keep `judge/calibration.json` passing when\nchanging the rubrics in `judge/tests.js`.\nEmbedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the\ningestion hook keeps failing, Argo CD stays on tha"
+        },
+        {
+          "n": 2,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Method",
+          "score": 0.213,
+          "text": "answerable questions** (capital of France, today's date, ...), scored\n  on similarity only.\n\nMetrics, at `k=4` (the chunks the model gets as context):\n\n| Metric | Meaning |\n|---|---|\n| hit@1 | the evidence is in the first result |\n| hit@k | it's somewhere in the top 4 |\n| MRR | mean of 1/rank of the first hit (0 if missed): rewards ranking it high |\n| separation | lowest score of a hit minus highest score of an unanswerable question; positive means a similarity threshold could tell \"nothing relevant\" apart from a real match |\n\nNo model is called, so it's free and deterministic: two runs of the same\nimage give the same numbers. It retrieves only; whether the model then\nanswers well is a different question (LLM-as-judge, not done yet)."
+        },
+        {
+          "n": 3,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Answer quality: Claude as judge",
+          "score": 0.191,
+          "text": "estion's language |\n\n`summary.py` reports the pass rate per check by language and by answering\nmodel, and lists every failure with the judge's reason.\n\n**Calibrating the judge.** `judge/calibration.json` holds five hand-written\nanswers with known verdicts: a correct one, one that adds an invented\nmechanism, one with a wrong number, an English answer to a Spanish question,\nand a correct refusal. A judge that disagrees with any of the 14 expected\nverdicts fails the summary. promptfoo's built-in `context-faithfulness`\nfailed this: it splits an answer into statements and averages them, and the\ncorrect 2-sentence answer scored between 0.33 and 0.75 across runs (threshold\n0.8), with no reason given. A pass/fail rubric that has to name the\nunsupported claim agreed on 14 of 14, on two consecutive runs. A calibration\nrun is 10 judge calls, ~12k tokens."
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.19,
+          "text": "**Scale-to-zero spans three layers.** The ScaledObject has three triggers:\n`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=\"local-mistral\"}`\nfrom LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads\n`vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A\nvLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.\nA third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod\nisn't Ready yet, for up to 20 minutes: otherwise gateway-demand expires ~7 minutes after\nthe last request and KEDA kills a slower cold start mid-load. Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,\nwhich doesn't count requests that failed because the backend was down. The query\nalso can't be a plain `increase()`: LiteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls "
+        }
+      ]
+    },
+    {
+      "id": "ingest-oom",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why was the ingestion Job OOMKilled?",
+      "reference": "ONNX memory grows with the embedding batch: it peaked at 834 MiB with 32 chunks per call, over the 768 MiB limit; the batch is now 8.",
+      "answer": " The ingestion Job was OOMKilled due to ONNX memory growth with the batch size. The peak memory usage was 834 MiB at 32 chunks per call and 452 MiB at 8 chunks. The current batch size is 8. [1]\n\nAdditionally, the failing ingestion Sync hook blocked newer revisions until the sync operation was terminated. [1] and [2]\n\nThere is a limitation of 768 MiB for the ingestion Job. [1]\n\nTherefore, the ingestion Job was OOMKilled because it exceeded the memory limit while processing the ONNX model with a large batch size.",
+      "model": "local-mistral",
+      "seconds": 3.7,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.266,
+          "text": "gestion**: 60 chunks in 18 s on a platform node (it took minutes on the\n8 GB laptop, starved by the rest of the local stack).\n\nBugs found on this run:\n\n- **Ingestion OOMKilled** under its 768 MiB limit: ONNX memory grows with the\n  batch (peak 834 MiB at 32 chunks per call, 452 MiB at 8). Batch now 8.\n- **A failing Sync hook blocks newer revisions**: the ingestion Job is an\n  Argo CD Sync hook, and while it kept failing on 0.1.0 the sync operation\n  stayed Running on the old revision, so the fixed 0.1.1 commit wasn't picked\n  up until the operation was terminated by hand. The failed attempts left 12\n  half-built collections; the next successful ingestion removed them all.\n- **Mistral's chat template rejects a system message** (400 from vLLM); the\n  local Ollama mock accepted it. The prompt is now a single user message.\n- **claude-fallback rejected `temperature=0`** (claude-sonnet-5 only accepts\n  1), for any gateway client: LiteLLM now drops unsupported parameters\n  (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change\n  needed a manual rollout restart."
+        },
+        {
+          "n": 2,
+          "source": "README.md",
+          "heading": "Current status",
+          "score": 0.247,
+          "text": " a ConfigMap change (no config checksum on its\n  Deployment); a failing ingestion Sync hook blocks newer revisions until the\n  sync is terminated.\n- O\n\n a ConfigMap change (no config checksum on its\n  Deployment); a failing ingestion Sync hook blocks newer revisions until the\n  sync is terminated.\n- OpenCost (infra-side cost) isn't installed yet."
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.217,
+          "text": "judge/tests.js`.\nEmbedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the\ningestion hook keeps failing, Argo CD stays on tha\n\njudge/tests.js`.\nEmbedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the\ningestion hook keeps failing, Argo CD stays on that revision until the sync operation\nis terminated. LiteLLM's ConfigMap (incl. `drop_params: true`, needed because\nclaude-sonnet-5 rejects temperature != 1) is only read at startup: restart the\nDeployment after changing it.\n\n**Cost control is a running theme, not just a comment.** There are no GPU nodes while\nvLLM is idle (Karpenter removes them once empty), NodePools cap GPUs and extra CPUs with\n`limits`, GPU and platform capacity prefers spot, the default VPC avoids a NAT Gateway,\nand KEDA's `minReplicaCount: 0` scales vLLM to zero when idle. Don't change these\ndefaults without a reason — the whole point of the project is demonstrating\ncost-aware AI infra."
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.199,
+          "text": "v` and loads it into kind, a name that policy doesn't match.\nPrompts go as a single user message: Mistral's chat template rejects a system role.\nThe embedding model is `google/embeddinggemma-300m` with task prefixes\n(`QUERY_PREFIX`/`DOCUMENT_PREFIX`), chosen over bge-small-en with `rag.evaluate`\n(docs/retrieval-eval.md): ~850 MiB resident, hence the 1.5 GiB limits in `k8s/rag/`.\nChanging the model, prefixes, chunking or the docs themselves changes retrieval, and CI\nfails the image below `apps/rag/eval/baseline.json`; a doc edit that removes a\nquestion's `evidence` text fails it too (update `eval/questions.yaml`). Answer quality is a separate,\nmanual step (`.github/workflows/judge.yml`, Claude as judge via promptfoo), not a CI gate:\nit costs money and isn't deterministic. Keep `judge/calibration.json` passing when\nchanging the rubrics in `judge/tests.js`.\nEmbedding memory grows with `EMBED_BATCH` (8; 32 OOMed the Job at 768 MiB). If the\ningestion hook keeps failing, Argo CD stays on tha"
+        }
+      ]
+    },
+    {
+      "id": "drop-params",
+      "lang": "en",
+      "answerable": true,
+      "question": "Why does LiteLLM drop unsupported parameters?",
+      "reference": "claude-fallback (claude-sonnet-5) rejects temperature other than 1, so LiteLLM drops parameters a model doesn't support (drop_params).",
+      "answer": " LiteLLM drops unsupported parameters because it no longer supports them. This change required a manual rollout restart as LiteLLM only reads its ConfigMap at startup [1].",
+      "model": "local-mistral",
+      "seconds": 1.08,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.596,
+          "text": "eLLM now drops unsupported parameters\n  (`drop_params`). LiteLLM only reads its ConfigMap at startup, so the change\n  needed a manual rollout restart.\n\nWhat this run cost (Cost Explorer; ~2 hours of cluster time, three image\nreleases, ~45 minutes of GPU):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node) | $0.66 |\n| EKS control plane | $0.16 |\n| EC2 other (EBS volumes, data transfer) | $0.16 |\n| KMS (includes a key not created by this project) | $0.07 |\n| VPC (public IPv4 addresses) | $0.02 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.07** |\n\nAll four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.497,
+          "text": "**Two parallel LiteLLM/vLLM configs — real GPU vs. local mock.** Because vLLM requires\na real GPU, there are two versions of the inference backend that LiteLLM points to,\nswitched by which files you apply:\n- Real: `k8s/vllm/deployment.yaml` (GPU, taints tolerated, model\n  `TheBloke/Mistral-7B-Instruct-v0.2-AWQ` served as `local-mistral`) +\n  `k8s/litellm/configmap.yaml`.\n- Local/no-GPU: `k8s/vllm/local-cpu-mock-deployment.yaml` (Ollama running\n  `qwen2.5:0.5b`, OpenAI-compatible, real but tiny inference) +\n  `k8s/litellm/configmap-local.yaml`.\nBoth configmaps use the same `litellm-config` ConfigMap name and the same\n`model_name: local-mistral`, so the client-facing API is identical regardless of\nwhich backend is deployed — `scripts/deploy-local.sh` applies the local pair,\nproduction applies the GPU pair. Don't let these two drift apart on\n`litellm_settings`/`router_settings` without a reason. The one intentional\ndifference: only the production config defines the `claude-fallback` model"
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.471,
+          "text": "iteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls \n\niteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls back to the raw value for series younger than the window). While vLLM\ncold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0\nalso needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`\nNodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own\nstartup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger\nmust keep excluding terminating pods: counting them woke vLLM after every\nscale-to-zero, in a loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request)."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Scale-to-zero, measured (first run)",
+          "score": 0.451,
+          "text": "## Scale-to-zero, measured (first run)\n\nWaking from zero, with no GPU node running (AL2023 GPU nodes):\n\n| Step | Time |\n|---|---|\n| KEDA sees the LiteLLM request and scales vLLM 0 → 1 | ~18 s |\n| Cluster Autoscaler triggers a GPU node scale-up from 0 | ~15 s |\n| GPU node boots and joins the cluster | ~1.5 min |\n| vLLM image pull (8.7 GB) | ~4.5 min |\n| Model load + CUDA graph capture | ~2 min |\n| **First local response** | **~8–9 min** |\n\nDuring that window LiteLLM's `fallbacks` send `local-mistral` requests to\n`claude-fallback`, so clients still get an answer.\n\nGoing back to zero after the last request:\n\n- vLLM at 0 replicas: ~5 min.\n- GPU node removed by the Cluster Autoscaler: ~18 min.\n\nThe cold start is dominated by the image pull. The obvious next improvements\nare caching the vLLM image on the node (a custom AMI or a pre-pulled image)\nand keeping the model weights on a volume instead of downloading them on\nevery start."
+        }
+      ]
+    },
+    {
+      "id": "es-k8s-version",
+      "lang": "es",
+      "answerable": true,
+      "question": "¿Qué versión de Kubernetes usa el clúster de EKS?",
+      "reference": "EKS 1.36.",
+      "answer": " The Kubernetes version used by the EKS cluster is 1.36, as stated in the context at [1] and [2].",
+      "model": "local-mistral",
+      "seconds": 0.96,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Repo-wide conventions",
+          "score": 0.51,
+          "text": "pc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`\n\npc_id` and `subnet_ids`\n  are set. `admin_cidrs` (who can reach the public EKS API) has no default on\n  purpose and is required for any `plan`/`apply`, e.g.\n  `-var='admin_cidrs=[\"<ip>/32\"]'`. Keep `kubernetes_version` in EKS *standard*\n  support: extended support bills a much higher hourly rate, and retired versions\n  can't be created (1.30 already can't)."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.505,
+          "text": "if the repo is renamed. `scripts/deploy-local.sh`\nstill installs the same components with `helm upgrade --install` for kind, without\nArgo CD (memory).\n\n**Things on EKS that only exist for EKS:** the gp3 default StorageClass\n(`k8s/storage/`, EKS ships none), the EBS CSI driver and Karpenter (IAM in Terraform,\ncontroller and `k8s/karpenter/` NodePools via Argo CD), control plane ServiceMonitors\ndisabled in the Prometheus values. vLLM's\nDeployment has no `replicas` and its Application ignores `/spec/replicas`, because KEDA\nowns the count; adding `replicas` back would make self-heal undo every scale-to-zero.\nTeardown must go through `scripts/teardown-eks.sh` before `terraform destroy`:\nKarpenter's instances aren't Terraform resources, so the script deletes the NodePools\nfirst (with root's auto-sync off, or Argo CD recreates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost and performance — results from a real EKS run",
+          "score": 0.49,
+          "text": "# Cost and performance — results from a real EKS run\n\nMeasured on 2026-10-06 on a real EKS 1.36 cluster built from this repo, then torn\ndown the same day. Everything below comes from that single session; rerun it\nbefore relying on the numbers for anything else."
+        },
+        {
+          "n": 4,
+          "source": "README.md",
+          "heading": "Repo structure",
+          "score": 0.442,
+          "text": "```\nllm-platform-on-eks/\n├── terraform/\n│   ├── bootstrap/            # One-time bootstrap: S3 bucket for remote state (native S3 locking)\n│   ├── main.tf                # EKS cluster (official module) + platform node group + Karpenter IAM/queue\n│   └── backend.hcl.example    # S3 backend template (copy to backend.hcl, gitignored)\n├── apps/\n│   └── rag/                   # RAG service (Python): ingestion + /ask API, Dockerfile, unit tests\n├── k8s/\n│   ├── vllm/                  # Deployment (GPU) + local-cpu-mock (Ollama) + Service + KEDA ScaledObject\n│   ├── litellm/                # Gateway: Deployment + ConfigMap (real vs. local) (routing/rate limits)\n│   ├── qdrant/                  # Vector DB for RAG (Helm values)\n│   ├── rag/                    # RAG ingestion Job (Argo CD Sync hook) + API Deployment\n│   ├── argocd/                 # Argo CD: install values, root app-of-apps, one Application per component\n│   ├── storage/                # Default gp3 StorageClass (EKS ships none"
+        }
+      ]
+    },
+    {
+      "id": "es-cold-start",
+      "lang": "es",
+      "answerable": true,
+      "question": "¿Cuánto tarda el arranque en frío con Karpenter y la caché de la imagen?",
+      "reference": "Unos 5-6 minutos (antes ~10-11 sin la caché).",
+      "answer": " The cold start with Karpenter and the image cache takes approximately 5 minutes and 14 seconds [3]. This is a significant improvement compared to the baseline of around 10-11 minutes without the cache [1][3]. The image pull time is no longer a factor since the image is already present on the disk [3].",
+      "model": "local-mistral",
+      "seconds": 1.95,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.542,
+          "text": "## Third run (2026-10-14): Karpenter, image cache that works\n\nGPU nodes now come from Karpenter (`k8s/karpenter/`) instead of a managed\nnode group + Cluster Autoscaler. Karpenter builds each launch from the\nEC2NodeClass, so the data volume's provisioned initialization rate actually\nreaches EC2 (verified on the volume: `InitializationType: provisioned-rate`,\n300 MiB/s, 100% before vLLM needed it). Same measurement script, single\nrequest, from zero vLLM pods and zero GPU nodes:\n\n| | Karpenter, no cache | Karpenter + snapshot (1) | Karpenter + snapshot (2) |\n|---|---|---|---|\n| KEDA sees the request | 41 s | 45 s | 22 s |\n| Karpenter decides (NodeClaim) | +12 s | +12 s | +11 s |\n| EC2 node object | +19 s | +32 s | +24 s |\n| Node Ready | +15 s | +14 s | +13 s |\n| Image pull | 4:41 | 0 (on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |"
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.475,
+          "text": "eates them) and waits for the nodes\nto go while Karpenter still runs; destroying with PVCs still present orphans their EBS\nvolumes. Both keep billing.\n\n**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back\nto on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`\n(overflow for platform pods beyond the fixed 2-node managed node group, which runs\nKarpenter itself). EC2NodeClasses find subnets and the node security group by the\n`karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed\nname; nodes are Bottlerocket, pinned by AMI alias. The GPU data volume's image cache\n(`snapshotID` + `volumeInitializationRate`) is set in-cluster by\n`scripts/set-gpu-image-cache.sh` and ignored by Argo CD (`RespectIgnoreDifferences`),\nbecause the snapshot is per account. Karpenter's Helm chart comes from an OCI registry\nregistered in `argocd-values.yaml`."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.438,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.437,
+          "text": "## Second run (2026-10-13): trying to cut the cold start\n\nGoal: remove the image pull by creating the GPU nodes' data volume from an\nEBS snapshot with the vLLM image already pulled (Bottlerocket GPU nodes,\n`scripts/build-gpu-image-cache.sh`). Every number below comes from\n`scripts/measure-cold-start.py` with a single request, from zero vLLM pods\nand zero GPU nodes. Same cluster, same day, on-demand `g4dn.xlarge`.\n\n| | No cache (baseline) | Snapshot | Snapshot + 300 MiB/s init rate |\n|---|---|---|---|\n| Request → GPU node Ready | 1:31 | 1:42 | 1:48 |\n| Image pull | 4:24 | 0 (already on disk) | 0 (already on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |"
+        }
+      ]
+    },
+    {
+      "id": "es-total-cost",
+      "lang": "es",
+      "answerable": true,
+      "question": "¿Cuánto costaron en total las sesiones en EKS?",
+      "reference": "$6.12 en total por las cuatro sesiones en EKS.",
+      "answer": " Based on the context provided, the total cost for the first EKS session was $1.48 [1], and the total cost for the second EKS session was $1.45 [3]. Therefore, the total cost for both EKS sessions was $2.93.",
+      "model": "local-mistral",
+      "seconds": 1.52,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "What the whole session cost",
+          "score": 0.427,
+          "text": "## What the whole session cost\n\nThe full AWS bill for the day (Cost Explorer), from `terraform apply` through\nthe benchmark, the scale-to-zero test and the teardown, ~2 hours of cluster time:\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes + GPU node) | $0.61 |\n| EC2 other (EBS volumes) | $0.33 |\n| KMS (includes a key not created by this project) | $0.30 |\n| EKS control plane | $0.22 |\n| VPC (public IPv4 addresses) | $0.03 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.48** |"
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost and performance — results from a real EKS run",
+          "score": 0.413,
+          "text": "# Cost and performance — results from a real EKS run\n\nMeasured on 2026-10-06 on a real EKS 1.36 cluster built from this repo, then torn\ndown the same day. Everything below comes from that single session; rerun it\nbefore relying on the numbers for anything else."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.407,
+          "text": "se\nrather than a regression.\n\nWhat this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold\nstarts, the snapshot builds and the teardown):\n\n| Service | Cost |\n|---|---|\n| EC2 instances (platform spot nodes, GPU node, snapshot builder) | $0.91 |\n| EKS control plane | $0.24 |\n| EC2 other (EBS volumes and the snapshot) | $0.20 |\n| KMS (includes a key not created by this project) | $0.06 |\n| VPC (public IPv4 addresses) | $0.04 |\n| S3 (Terraform state) | < $0.01 |\n| **Total before tax** | **$1.45** |"
+        },
+        {
+          "n": 4,
+          "source": "README.md",
+          "heading": "Results from a real EKS run",
+          "score": 0.4,
+          "text": "## Results from a real EKS run\n\nMeasured on EKS 1.36 with one `g4dn.xlarge` (NVIDIA T4) serving Mistral-7B AWQ\nthrough the LiteLLM gateway. Full numbers, method and caveats in\n[docs/cost-comparison.md](docs/cost-comparison.md).\n\n| Concurrent requests | Output tokens/s | p50 latency | Cost per 1M output tokens (on-demand / spot) |\n|---|---|---|---|\n| 1 | 50 | 2.54 s | $2.90 / $1.49 |\n| 4 | 186 | 2.75 s | $0.79 / $0.40 |\n| 8 | 342 | 2.98 s | $0.43 / $0.22 |"
+        }
+      ]
+    },
+    {
+      "id": "es-snapshot",
+      "lang": "es",
+      "answerable": true,
+      "question": "¿Por qué el snapshot de EBS hizo más lento el arranque en frío?",
+      "reference": "Un volumen restaurado desde snapshot trae cada bloque de S3 la primera vez que se lee, y vLLM lee miles de archivos al arrancar.",
+      "answer": " The snapshot made the cold start slower because during the slow runs, the container used under 0.6 CPU cores with no throttling, and the volume served only ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. When a volume is restored from a snapshot, each block is fetched from S3 the first time it's read, and vLLM reads thousands of PyTorch/CUDA files at startup. The fix should have been a provisioned volume initialization rate, but EKS managed node groups copy the launch template into their own and drop `VolumeInitializationRate`, causing the third run to behave like the second. [1]\n\nThe second issue mentioned is that EBS volumes can't follow nodes across AZs, and stateful workloads need a node group per AZ or volumes that can be recreated. [2]\n\nThe cost comparison shows that the second run took approximately 2.5 hours of cluster time, three cold starts, the snapshot builds, and the teardown. [3]\n\nTo improve the cold start in the future, nodes that honor the launch template as written (Karpenter or a self-managed node group) should be used so the initialization rate applies, or pulling the image from ECR in the same region instead of Docker Hub. [4]\n\nAnswer to the question in Spanish: El snapshot de EBS hizo el arranque en frío más lento porque durante las ejecuciones lentas, el contenedor utilizó menos de 0.6 CPU cores sin limitación, y el volumen sirvió solo ~40-80 lecturas/s, esperando en S3 en lugar de llegar a los límites gp3. Cuando se restaura un volumen a partir de un snapshot, cada bloque",
+      "model": "local-mistral",
+      "seconds": 9.51,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.522,
+          "text": "y on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |\n\nThe snapshot made the cold start slower. A volume restored from a snapshot\nfetches each block from S3 the first time it's read, and vLLM reads\nthousands of PyTorch/CUDA files at startup: during the slow runs the\ncontainer used under 0.6 CPU cores with no throttling, and the volume served\nonly ~40-80 reads/s, waiting on S3 rather than hitting gp3 limits. After 15\nminutes the volume was 21% initialized.\n\nThe fix should have been a provisioned volume initialization rate (the whole\n~30 GiB snapshot in ~100 s), but EKS managed node groups copy the launch\ntemplate into their own and drop `VolumeInitializationRate`: ours had 300,\nthe copy EKS launches from doesn't, so the third run behaved like the\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.478,
+          "text": "g, since their\n  EBS volumes can't follow them across AZs. Not fixed: stateful workloads\n  need a node group per AZ, or volumes that can be recreated.\n\nWarm performance (`scripts/benchmark.py`, streaming through LiteLLM,\n128 output tokens per request):\n\n| Concurrent requests | Output tokens/s | TTFT p50 | TTFT p95 | Latency p50 | Latency p95 |\n|---|---|---|---|---|---|\n| 1 | 47 | 0.31 s | 0.31 s | 2.74 s | 2.74 s |\n| 4 | 172 | 0.36 s | 0.42 s | 2.97 s | 3.02 s |\n| 8 | 310 | 0.41 s | 0.45 s | 3.26 s | 3.36 s |\n\nThroughput is ~9% below the first run's (342 tok/s at 8); the prompt,\nstreaming and node differ between runs, so treat it as run-to-run noise\nrather than a regression.\n\nWhat this run cost (Cost Explorer, ~2.5 hours of cluster time, three cold\nstarts, the snapshot builds and the teardown):"
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.449,
+          "text": "## Second run (2026-10-13): trying to cut the cold start\n\nGoal: remove the image pull by creating the GPU nodes' data volume from an\nEBS snapshot with the vLLM image already pulled (Bottlerocket GPU nodes,\n`scripts/build-gpu-image-cache.sh`). Every number below comes from\n`scripts/measure-cold-start.py` with a single request, from zero vLLM pods\nand zero GPU nodes. Same cluster, same day, on-demand `g4dn.xlarge`.\n\n| | No cache (baseline) | Snapshot | Snapshot + 300 MiB/s init rate |\n|---|---|---|---|\n| Request → GPU node Ready | 1:31 | 1:42 | 1:48 |\n| Image pull | 4:24 | 0 (already on disk) | 0 (already on disk) |\n| Container start → vLLM Ready | 4:12 | 11:58 | 13:20 |\n| **Request → first vLLM answer** | **~10 min** | **~14.5 min** | **~15.8 min** |"
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Second run (2026-10-13): trying to cut the cold start",
+          "score": 0.395,
+          "text": "he\nsecond. Fast snapshot restore would work but bills per hour per AZ even when\nnothing is restored (~$540/month per AZ), which defeats scale-to-zero.\n\nWhat would actually help, for a next run: nodes that honor the launch\ntemplate as written (Karpenter or a self-managed node group) so the\ninitialization rate applies, or pulling the image from ECR in the same region\n(pull-through cache) instead of Docker Hub. The repo went with the first:\nGPU nodes now come from Karpenter (`k8s/karpenter/`), which also falls back\nfrom spot to on-demand and launches nodes in the AZ of a pod's volume.\n\nOther findings from this run:"
+        }
+      ]
+    },
+    {
+      "id": "es-keda-wake",
+      "lang": "es",
+      "answerable": true,
+      "question": "¿Cómo despierta la plataforma a vLLM desde cero réplicas?",
+      "reference": "El trigger gateway-demand de KEDA lee la métrica de peticiones de LiteLLM (que siempre corre) y escala vLLM de 0 a 1; Karpenter lanza un nodo GPU y mientras tanto LiteLLM usa claude-fallback.",
+      "answer": " To wake vLLM from zero replicas, the ScaledObject has three triggers. The first one, `gateway-demand`, reads the metric `litellm_deployment_total_requests_total{requested_model=\"local-mistral\"}` from LiteLLM to scale out vLLM [2]. The second one, `vllm-queue`, reads the metric `vllm:num_requests_waiting` to scale out once vLLM is up [2]. The third one, `startup-in-progress`, holds the replica while its pod isn't Ready yet [2].\n\nWhen vLLM is at 0 replicas, it takes around 5 minutes for it to go back to zero [3]. When KEDA sees the LiteLLM request and scales vLLM from 0 to 1, it takes around 18 seconds [3]. After that, the Cluster Autoscaler triggers a GPU node scale-up from 0, which takes around 1.5 minutes for the GPU node to boot and join the cluster [3]. The vLLM image pull takes around 4.5 minutes [3]. After the image pull, the model load and CUDA graph capture take around 2 minutes [3]. The first local response from vLLM takes around 8-9 minutes [3]. During this window, LiteLLM's `fallbacks` send `local-mistral` requests to `claude-fallback`, so clients still get an answer [1].\n\nIn the third run, the image cache was used on disk, which significantly reduced the cold start time. The container start to vLLM Ready took 3 minutes and 43 seconds, and the Request to first vLLM answer took around 5 minutes and ",
+      "model": "local-mistral",
+      "seconds": 9.7,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.502,
+          "text": "iteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls \n\niteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls back to the raw value for series younger than the window). While vLLM\ncold-starts, LiteLLM's `fallbacks` route to `claude-fallback`. On EKS, waking from 0\nalso needs a GPU node: the Pending vLLM pod makes Karpenter launch one from the `gpu`\nNodePool (until Karpenter is synced by Argo CD, the pod stays Pending). A cold start takes ~10-11 minutes without the image cache (image pull + vLLM's own\nstartup) and ~5-6 with it (docs/cost-comparison.md, third run). The startup trigger\nmust keep excluding terminating pods: counting them woke vLLM after every\nscale-to-zero, in a loop. `keda-scaledobject-local.yaml`\nmirrors the triggers against the Ollama mock (tested locally: scales to 0 when idle,\nwakes on the next request)."
+        },
+        {
+          "n": 2,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.5,
+          "text": "**Scale-to-zero spans three layers.** The ScaledObject has three triggers:\n`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=\"local-mistral\"}`\nfrom LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads\n`vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A\nvLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.\nA third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod\nisn't Ready yet, for up to 20 minutes: otherwise gateway-demand expires ~7 minutes after\nthe last request and KEDA kills a slower cold start mid-load. Use the deployment-level LiteLLM metric, not `litellm_proxy_total_requests_metric`,\nwhich doesn't count requests that failed because the backend was down. The query\nalso can't be a plain `increase()`: LiteLLM creates the series on its first request\nalready at 1, so `increase()` reads 0 for the very first request after LiteLLM starts\n(the query falls "
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Scale-to-zero, measured (first run)",
+          "score": 0.484,
+          "text": "## Scale-to-zero, measured (first run)\n\nWaking from zero, with no GPU node running (AL2023 GPU nodes):\n\n| Step | Time |\n|---|---|\n| KEDA sees the LiteLLM request and scales vLLM 0 → 1 | ~18 s |\n| Cluster Autoscaler triggers a GPU node scale-up from 0 | ~15 s |\n| GPU node boots and joins the cluster | ~1.5 min |\n| vLLM image pull (8.7 GB) | ~4.5 min |\n| Model load + CUDA graph capture | ~2 min |\n| **First local response** | **~8–9 min** |\n\nDuring that window LiteLLM's `fallbacks` send `local-mistral` requests to\n`claude-fallback`, so clients still get an answer.\n\nGoing back to zero after the last request:\n\n- vLLM at 0 replicas: ~5 min.\n- GPU node removed by the Cluster Autoscaler: ~18 min.\n\nThe cold start is dominated by the image pull. The obvious next improvements\nare caching the vLLM image on the node (a custom AMI or a pre-pulled image)\nand keeping the model weights on a volume instead of downloading them on\nevery start."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.451,
+          "text": "on disk) | 0 (on disk) |\n| Container start → vLLM Ready | 4:44 | 3:43 | 3:34 |\n| **Request → first vLLM answer** | **~11 min** | **5:43** | **5:14** |\n\n**The cold start dropped from ~10-11 minutes to ~5-6**, consistently across\ntwo samples. The image pull is gone, and vLLM's own startup is faster too\n(model load ~30 s vs ~84 s), since the volume is fully written before vLLM\nreads it.\n\nEvery GPU node came up on-demand: Karpenter asked for spot first, EC2\nanswered `UnfulfillableCapacity` (as on both earlier runs) and the retry on\non-demand launched ~12 s later, with no manual switch. Back to zero after the\nlast request: vLLM at 0 replicas, then Karpenter decides to remove the empty\nnode 5 minutes later (`consolidateAfter`) and the instance is gone ~7 minutes\nafter that, ~12 minutes in total vs ~18 with the Cluster Autoscaler.\n\nBugs found on this run:"
+        }
+      ]
+    },
+    {
+      "id": "off-capital",
+      "lang": "en",
+      "answerable": false,
+      "question": "What is the capital of France?",
+      "reference": "",
+      "answer": " The context does not provide an answer to the question about the capital of France. The passage only mentions the question being correctly declined by the model. [1], [2] do not contain any information related to the capital of France.",
+      "model": "local-mistral",
+      "seconds": 1.27,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.192,
+          "text": " in the docs but not in the top 4 chunks; it said it didn't know |\n| What is the capital of France? / today's date (in Spanish) | Correctly declined |\n\n4 of 6 correct, 1 partial, 1 retrieval miss, no invented answers.\nOff-topic questions score ~0.4-0.5 similarity against ~0.75-0.8 for answerable\nones, so a similarity threshold could skip the model call altogether. The\nembedding model is English-only (`bge-small-en`): Spanish questions retrieve\nworse and get English answers. Measuring changes like these against a fixed\nquestion set is the next project (evaluation in CI).\n\n**Ingestion**: 60 chunks in 18 s on a platform node (it took minutes on the\n8 GB laptop, starved by the rest of the local stack).\n\nBugs found on this run:"
+        },
+        {
+          "n": 2,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Method",
+          "score": 0.19,
+          "text": "answerable questions** (capital of France, today's date, ...), scored\n  on similarity only.\n\nMetrics, at `k=4` (the chunks the model gets as context):\n\n| Metric | Meaning |\n|---|---|\n| hit@1 | the evidence is in the first result |\n| hit@k | it's somewhere in the top 4 |\n| MRR | mean of 1/rank of the first hit (0 if missed): rewards ranking it high |\n| separation | lowest score of a hit minus highest score of an unanswerable question; positive means a similarity threshold could tell \"nothing relevant\" apart from a real match |\n\nNo model is called, so it's free and deterministic: two runs of the same\nimage give the same numbers. It retrieves only; whether the model then\nanswers well is a different question (LLM-as-judge, not done yet)."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.102,
+          "text": "d `k8s/rag/` together, CI publishing and signing, Argo CD syncing.\n\n**Answer quality**, Mistral-7B AWQ through LiteLLM, `top_k=4`, 1.5-6 s per\nanswer:\n\n| Question | Result |\n|---|---|\n| How does the platform wake vLLM up from zero? | Partial: the core is right, but it blends two passages into a \"bug\" that doesn't exist |\n| Why did the EBS snapshot make the cold start slower? | Correct and complete |\n| How long is a cold start with Karpenter and the cache? | Correct (5-6 min), cited |\n| What did the second EKS session cost? | Correct ($1.45 with the breakdown) |\n| Which Kubernetes version does the cluster run? | Retrieval miss: the fact is in the docs but not in the top 4 chunks; it said it didn't know |\n| What is the capital of France? / today's date (in Spanish) | Correctly declined |"
+        },
+        {
+          "n": 4,
+          "source": "CLAUDE.md",
+          "heading": "Architecture notes that span multiple files",
+          "score": 0.09,
+          "text": "## Architecture notes that span multiple files\n\n**Terraform vs. Argo CD split is load-bearing.** Terraform only ever provisions AWS\nresources (EKS cluster, the fixed platform node group, add-ons, IAM/Pod Identity,\nKarpenter's IAM roles and interruption queue, S3 for state). Everything that runs\n*inside* the cluster — including Karpenter itself and its NodePools — is deployed by\nArgo CD from this repo, not by a Terraform\n`helm_release`/`kubernetes_*` resource. When adding a new workload, follow this split\nrather than mixing the two. The one exception is the NVIDIA device plugin: GPU nodes run\nBottlerocket's NVIDIA variant, which ships it as a host service, so there's no\nDaemonSet to deploy (and adding one would conflict with it)."
+        }
+      ]
+    },
+    {
+      "id": "off-date",
+      "lang": "es",
+      "answerable": false,
+      "question": "¿Cuál es la fecha de hoy?",
+      "reference": "",
+      "answer": " Based on the context provided, the answer to the question \"What is today's date in Spanish?\" would be retrieved using the LLM-platform-on-eks project. However, I cannot directly provide the answer as I am just an AI language model and do not have the ability to execute code or access external data. I can only provide information based on the text given to me.\n\nAccording to the context, the LLM-platform-on-eks project is able to answer questions with a similarity threshold of ~0.75-0.8 and can handle Spanish questions, but the embedding model is English-only and Spanish questions retrieve worse answers. The project also mentions measuring changes against a fixed question set as the next project.\n\nTherefore, based on the context, I cannot directly provide the answer to the question, but I can confirm that the LLM-platform-on-eks project is capable of answering such a question.\n\n[1] docs/cost-comparison.md - Fourth run (2026-10-20): RAG service and signed images\n[2] docs/cost-comparison.md - Cost and performance — results from a real EKS run\n[3] README.md - Current status\n[4] docs/cost-comparison.md - Fourth run (2026-10-20): RAG service and signed images",
+      "model": "local-mistral",
+      "seconds": 7.03,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.108,
+          "text": " in the docs but not in the top 4 chunks; it said it didn't know |\n| What is the capital of France? / today's date (in Spanish) | Correctly declined |\n\n4 of 6 correct, 1 partial, 1 retrieval miss, no invented answers.\nOff-topic questions score ~0.4-0.5 similarity against ~0.75-0.8 for answerable\nones, so a similarity threshold could skip the model call altogether. The\nembedding model is English-only (`bge-small-en`): Spanish questions retrieve\nworse and get English answers. Measuring changes like these against a fixed\nquestion set is the next project (evaluation in CI).\n\n**Ingestion**: 60 chunks in 18 s on a platform node (it took minutes on the\n8 GB laptop, starved by the rest of the local stack).\n\nBugs found on this run:"
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost and performance — results from a real EKS run",
+          "score": 0.096,
+          "text": "# Cost and performance — results from a real EKS run\n\nMeasured on 2026-10-06 on a real EKS 1.36 cluster built from this repo, then torn\ndown the same day. Everything below comes from that single session; rerun it\nbefore relying on the numbers for anything else."
+        },
+        {
+          "n": 3,
+          "source": "README.md",
+          "heading": "Current status",
+          "score": 0.093,
+          "text": "## Current status\n\nValidated end to end on a real AWS account (2026-10-06): `terraform apply`,\nArgo CD sync of every component, scale-to-zero and wake-up through the\nCluster Autoscaler, benchmark, and teardown with no resources left behind.\n\nFourth run (2026-10-20): the RAG service on EKS, with its image signed in CI\nand admitted by Kyverno in Enforce only with that signature (pinned to the\nverified digest); answers come from Mistral-7B through LiteLLM.\n\nThird run (2026-10-14): GPU nodes moved from a managed node group + Cluster\nAutoscaler to Karpenter, validated on EKS: spot with automatic on-demand\nfallback, image cache with a provisioned initialization rate (cold start\n~5-6 min), GPU node removed ~12 min after the last request."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.082,
+          "text": "## Fourth run (2026-10-20): RAG service and signed images\n\nThe RAG service (`apps/rag/`) on EKS for the first time, with its image\nbuilt, scanned and signed keylessly by CI and `require-image-signature.yaml`\nin Enforce.\n\n**Supply chain, end to end.** CI pushed `ghcr.io/yack300/llm-platform-rag`\nand signed it with the workflow's GitHub OIDC identity; `cosign verify`\naccepts it for `ci.yml@refs/heads/main` and rejects it for any other ref.\nIn the cluster Kyverno admitted the pods and rewrote their image to the\nverified digest (`...:0.1.2@sha256:...`). Two more versions shipped during\nthe session the same way (0.1.1, 0.1.2): a commit bumping `apps/rag/VERSION`\nand `k8s/rag/` together, CI publishing and signing, Argo CD syncing.\n\n**Answer quality**, Mistral-7B AWQ through LiteLLM, `top_k=4`, 1.5-6 s per\nanswer:"
+        }
+      ]
+    },
+    {
+      "id": "off-cake",
+      "lang": "en",
+      "answerable": false,
+      "question": "How do I bake a chocolate cake?",
+      "reference": "",
+      "answer": " Based on the context provided, I cannot directly answer the question as it is not mentioned in the context. However, I can tell you how to evaluate the answer to a question using the `llm-platform-on-eks` project.\n\nTo evaluate the answer to a question, you can use the `claude-sonnet-5` judge to grade the file with the judge's reason. The judge checks the answer against several checks, including correctness, faithfulness, declines, and language. The `summary.py` script reports the pass rate per check by language and by answering model, and lists every failure with the judge's reason.\n\nHere are the steps to evaluate an answer:\n\n1. Run the retrieval and evaluation scripts to get the answer.\n2. Save the answer in a file, for example, `apps/rag/eval/answers/<date>.json`.\n3. Run the judge to grade the answer file. This can be done locally in Docker or using the `judge.yml` workflow.\n4. Check the `summary.py` report to see the pass rate per check and any failures with the judge's reason.",
+      "model": "local-mistral",
+      "seconds": 5.92,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/retrieval-eval.md",
+          "heading": "In CI",
+          "score": 0.148,
+          "text": "he job summary. It takes ~40 s on a laptop's 2 CPUs.\n\nLocally, with the image built (`docker build -f apps/rag/Dockerfile -t\nllm-platform-rag:dev .`):\n\n```bash\ndocker run --rm -v \"$PWD/apps/rag/eval\":/eval:ro llm-platform-rag:dev \\\n  python -m rag.evaluate --questions /eval/questions.yaml --baseline /eval/baseline.json\n```\n\n`EMBEDDING_MODEL`, `QUERY_PREFIX`, `DOCUMENT_PREFIX`, `CHUNK_SIZE` and\n`CHUNK_OVERLAP` are environment variables, so a candidate configuration can\nbe evaluated without code changes (a model other than the baked one needs\nits cache mounted at `/models`, or `HF_HUB_OFFLINE=0` to download it)."
+        },
+        {
+          "n": 2,
+          "source": "README.md",
+          "heading": "Getting started (recommended order)",
+          "score": 0.146,
+          "text": "## Getting started (recommended order)"
+        },
+        {
+          "n": 3,
+          "source": "CLAUDE.md",
+          "heading": "Commands",
+          "score": 0.126,
+          "text": "# What CI runs (.github/workflows/ci.yml), with the same pinned images, useful to\n# replicate locally before pushing (image versions live in the workflow's env:)\ndocker run --rm -v \"$PWD\":/repo -w /repo bridgecrew/checkov:3.3.20 -d terraform/ --compact --quiet\ndocker run --rm -v \"$PWD\":/repo -w /repo aquasec/trivy:0.74.0 fs --severity CRITICAL,HIGH --exit-code 1 .\ndocker run --rm -v \"$PWD\":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact --verbose\ndocker run --rm -v \"$PWD\":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/4c8dc296d32b06d15ccde9668ff136c951f4d539/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -ignore-filename-pattern 'values(-local)?\\.yaml$' -kubernetes-version 1.36.0 k8s/\n# kyverno: one -r per workload file (see the workflow's kyverno job for why), without\n# require-image-signature, e.g.\ndocker run --rm -v \"$PWD\":/repo -w /repo ghcr.io/kyve"
+        },
+        {
+          "n": 4,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Answer quality: Claude as judge",
+          "score": 0.12,
+          "text": "bectl -n llm-platform exec -i deploy/rag-api -- python -m rag.answers \\\n     < apps/rag/eval/questions.yaml > apps/rag/eval/answers/<date>.json\n   ```\n\n2. **Judge**, anywhere: promptfoo (`apps/rag/eval/judge/`) grades the file\n   with `claude-sonnet-5`, locally in Docker or with the manual\n   *Judge RAG answers* workflow (`judge.yml`, `ANTHROPIC_API_KEY` secret).\n   Not on every push: it costs money and isn't deterministic.\n\nChecks, each pass/fail with the judge's reason:\n\n| Check | Questions | Passes when |\n|---|---|---|\n| correct | answerable | it agrees with the question's `reference` answer |\n| faithful | answerable | every claim is in the passages the model was given |\n| declines | unanswerable | it says it doesn't know instead of answering from general knowledge |\n| language | all | it's in the question's language |\n\n`summary.py` reports the pass rate per check by language and by answering\nmodel, and lists every failure with the judge's reason."
+        }
+      ]
+    },
+    {
+      "id": "off-nvidia-stock",
+      "lang": "en",
+      "answerable": false,
+      "question": "What is NVIDIA's stock price today?",
+      "reference": "",
+      "answer": " I cannot answer that question as the context provided does not contain information about NVIDIA's stock price.",
+      "model": "local-mistral",
+      "seconds": 0.69,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/cost-comparison.md",
+          "heading": "Cost (GPU node only)",
+          "score": 0.256,
+          "text": "## Cost (GPU node only)\n\n| Concurrent requests | Per 1M output tokens (on-demand) | Per 1M output tokens (spot) | Per 1,000 requests (on-demand) | Per 1,000 requests (spot) |\n|---|---|---|---|---|\n| 1 | $2.90 | $1.49 | $0.37 | $0.19 |\n| 4 | $0.79 | $0.40 | $0.10 | $0.05 |\n| 8 | $0.43 | $0.22 | $0.055 | $0.028 |\n\nComputed as `hourly price ÷ (tokens or requests per hour)` at sustained load.\nThese figures cover only the GPU node. They leave out the fixed cost of\nrunning the platform: the EKS control plane ($0.10/h) and the spot platform\nnodes that run LiteLLM, Prometheus, Argo CD and the rest, which bill even\nwhen vLLM is scaled to zero."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.249,
+          "text": "## Conclusion\n\nThe cost per token depends almost entirely on utilization. The same GPU costs\n$2.90 per million output tokens with one request at a time and $0.43 with\neight. And while it sits idle, the per-token cost is effectively unbounded:\na `g4dn.xlarge` on-demand kept up 24/7 costs ~$384/month whether it serves\nanything or not.\n\nThat shapes the design:\n\n- **Low or bursty traffic:** scale vLLM and its GPU node to zero, accept an\n  ~8-minute cold start, and let the gateway route to an external provider\n  meanwhile. You pay for the GPU only while there's demand.\n- **Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available."
+        },
+        {
+          "n": 3,
+          "source": "docs/cost-comparison.md",
+          "heading": "Conclusion",
+          "score": 0.204,
+          "text": "*Sustained traffic with enough concurrency to batch:** keeping the GPU\n  warm pays off, and spot capacity roughly halves the cost when it's available.\n\nWhere the line falls between the two depends on the external provider's\ncurrent per-token pricing and on your own traffic. The Grafana dashboard\n`k8s/observability/grafana-dashboard-llm-cost.yaml` computes both sides live:\nset the provider's API prices and the GPU node's hourly cost in its variables."
+        },
+        {
+          "n": 4,
+          "source": "docs/cost-comparison.md",
+          "heading": "Third run (2026-10-14): Karpenter, image cache that works",
+          "score": 0.196,
+          "text": "| — | $0.21 (58.7 GB: 2 volumes × 29.4 GB) |\n| Regional data transfer | $0.15 (15.3 GB) | $0.56 (55.9 GB) |\n| gp3 volumes + snapshot | $0.05 | $0.04 |\n\n- **Volume initialization is ~$0.11 per cold start** with the cache\n  ($0.0036/GB × 29.4 GB), as estimated.\n- **Regional data transfer tracks vLLM starts, not cold starts.** Every\n  vLLM pod downloads the model's 3.9 GB of weights from Hugging Face again,\n  billed here at $0.01/GB (~$0.04 per start): ~4 starts on the second run\n  (~15.6 GB) and ~14 on the third, ~10 of them from the KEDA scale loop\n  (~55 GB). Cost Explorer doesn't show the traffic's destination, so this is\n  inferred from how closely the two match. Caching the weights on the node\n  too (like the image) would remove it, and ~20 s of every cold start."
+        }
+      ]
+    },
+    {
+      "id": "off-worldcup",
+      "lang": "es",
+      "answerable": false,
+      "question": "¿Quién ganó el mundial de fútbol de 2022?",
+      "reference": "",
+      "answer": " Based on the context provided, the project is about evaluating different embedding models for retrieval tasks. The model \"embeddinggemma-300m with task prompts\" improved English hit@4 from 0.84 to 0.92 at the cost of one Spanish question's performance, which went from 0.40 to 0.80. The cost comparison document shows that the API memory and ingestion peak for this model are larger than the previous one, but the query embedding latency is similar. The trade-off was taken for multilingual retrieval and an increase in answerable questions in the top 4.\n\nAnswer: The model \"embeddinggemma-300m with task prompts\" improved English retrieval performance but had a larger memory footprint and cost for multilingual retrieval and an increase in answerable questions in the top 4.\n\n[1], [3] for the information about the model improvements and trade-offs.\n[2] for the cost comparison information.",
+      "model": "local-mistral",
+      "seconds": 5.36,
+      "contexts": [
+        {
+          "n": 1,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Results",
+          "score": 0.061,
+          "text": "ery: `) and `DOCUMENT_PREFIX`\n(`title: none | text: `). They improved English (hit@4 0.84 -> 0.92) at the\ncost of one Spanish question (1.00 -> 0.80).\n\nCaveats: Spanish has only 5 questions, so each one moves its hit@4 by 0.2,\nand the English difference between the two embeddinggemma variants is two\nquestions. The set is small and was written by the same person who wrote the\ndocs; the numbers rank configurations, they aren't a general quality claim."
+        },
+        {
+          "n": 2,
+          "source": "docs/cost-comparison.md",
+          "heading": "Fourth run (2026-10-20): RAG service and signed images",
+          "score": 0.046,
+          "text": " in the docs but not in the top 4 chunks; it said it didn't know |\n| What is the capital of France? / today's date (in Spanish) | Correctly declined |\n\n4 of 6 correct, 1 partial, 1 retrieval miss, no invented answers.\nOff-topic questions score ~0.4-0.5 similarity against ~0.75-0.8 for answerable\nones, so a similarity threshold could skip the model call altogether. The\nembedding model is English-only (`bge-small-en`): Spanish questions retrieve\nworse and get English answers. Measuring changes like these against a fixed\nquestion set is the next project (evaluation in CI).\n\n**Ingestion**: 60 chunks in 18 s on a platform node (it took minutes on the\n8 GB laptop, starved by the rest of the local stack).\n\nBugs found on this run:"
+        },
+        {
+          "n": 3,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Results",
+          "score": 0.046,
+          "text": "## Results\n\nAll on the same 35 questions and corpus, CHUNK_SIZE 1000 unless noted.\n\n| Embedding model | hit@1 | hit@4 | MRR | Spanish hit@4 | Separation |\n|---|---|---|---|---|---|\n| BAAI/bge-small-en-v1.5 (before) | 0.50 | 0.70 | 0.59 | 0.40 | -0.069 |\n| bge-small, CHUNK_SIZE 500 | worse | | | | |\n| bge-small, its query instruction | same as plain | | | | |\n| paraphrase-multilingual-mpnet-base-v2 | worse | | | | |\n| potion-multilingual-128m | worse | | | | |\n| google/embeddinggemma-300m, no prompts | 0.53 | 0.87 | 0.67 | 1.00 | -0.040 |\n| **embeddinggemma-300m with task prompts (now)** | **0.57** | **0.90** | **0.69** | **0.80** | **+0.010** |\n\nembeddinggemma is trained with task prompts, prepended here as\n`QUERY_PREFIX` (`task: search result | query: `) and `DOCUMENT_PREFIX`\n(`title: none | text: `). They improved English (hit@4 0.84 -> 0.92) at the\ncost of one Spanish question (1.00 -> 0.80)."
+        },
+        {
+          "n": 4,
+          "source": "docs/retrieval-eval.md",
+          "heading": "Cost of the better model",
+          "score": 0.04,
+          "text": "## Cost of the better model\n\nMeasured in the image, ONNX on CPU:\n\n| | bge-small-en-v1.5 | embeddinggemma-300m |\n|---|---|---|\n| API memory, resident | ~350 MiB | ~850 MiB |\n| Ingestion peak (2 CPUs, EMBED_BATCH 8) | 452 MiB | ~1 GiB |\n| Query embedding, p50 at 1 CPU | 8 ms | 47 ms |\n| Model load | 0.9 s | 3.1 s |\n| Image, uncompressed / pulled | ~0.65 GB / ~0.25 GB | ~1.7 GB / ~0.7 GB |\n| License | MIT | Gemma terms of use |\n\nThe latency doesn't matter next to 2-6 s of generation. The memory does: the\nAPI and the ingestion Job went from a 768 MiB to a 1.5 GiB limit (1 GiB\nrequested), on platform nodes with 8 GiB. The pull is ~0.45 GB larger the\nfirst time a node runs the image.\n\nThe trade-off was taken for multilingual retrieval (Spanish hit@4 0.40 ->\n0.80) and +6 answerable questions in the top 4 (21 -> 27 of 30)."
+        }
+      ]
+    }
+  ]
+}
