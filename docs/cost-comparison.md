@@ -289,6 +289,31 @@ releases, ~45 minutes of GPU):
 
 All four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**.
 
+## Fifth run (2026-10-26): judging RAG answers
+
+Mistral's answers to the evaluation set, graded by Claude, across three RAG
+versions; results in [retrieval-eval.md](retrieval-eval.md#first-judged-run-on-eks-2026-10-26).
+The GPU node came up on spot for the first time, then on-demand after
+scale-to-zero when spot had no capacity.
+
+What this run cost (Cost Explorer; ~1 h 45 min of cluster time, ~50 minutes
+of GPU):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU node) | $0.45 |
+| EC2 other (EBS volumes, data transfer) | $0.16 |
+| EKS control plane | $0.15 |
+| KMS (includes a key not created by this project) | $0.12 |
+| VPC (public IPv4 addresses) | $0.02 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$0.90** |
+
+The judge is billed by Anthropic, not AWS: ~95 calls (~90k input, ~25k
+output tokens) per graded run.
+
+All five EKS runs: $6.12 + $0.90 = **$7.02**.
+
 ## What the whole session cost
 
 The full AWS bill for the day (Cost Explorer), from `terraform apply` through

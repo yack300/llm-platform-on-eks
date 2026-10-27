@@ -93,8 +93,8 @@ questions:
     reference: "About 0.31 s at concurrency 1 (0.3-0.4 s warm)."
   - id: total-cost
     question: What did all the EKS runs cost in total?
-    evidence: ["$6.12"]
-    reference: "$6.12 for all four EKS runs ($1.48 + $1.45 + $2.12 + $1.07)."
+    evidence: ["$7.02"]
+    reference: "$7.02 for all five EKS runs."
   - id: second-run-cost
     question: What did the second EKS session cost?
     evidence: ["$1.45"]
@@ -140,8 +140,8 @@ questions:
   - id: es-total-cost
     question: ¿Cuánto costaron en total las sesiones en EKS?
     lang: es
-    evidence: ["$6.12"]
-    reference: "$6.12 en total por las cuatro sesiones en EKS."
+    evidence: ["$7.02"]
+    reference: "$7.02 en total por las cinco sesiones en EKS."
   - id: es-snapshot
     question: ¿Por qué el snapshot de EBS hizo más lento el arranque en frío?
     lang: es
