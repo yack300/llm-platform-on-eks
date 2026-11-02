@@ -222,3 +222,37 @@ by the local model (none by the fallback). Answers and summaries in
 
 The GPU node came up on spot this time (the first time in five runs), and
 later on-demand when spot had no capacity.
+
+## Mistral-7B vs Qwen2.5-7B (sixth EKS run, 2026-11-02)
+
+Same session, same RAG version (0.2.4, chunk headers) and prompt, so the
+only difference is the model vLLM serves. Qwen/Qwen2.5-7B-Instruct-AWQ
+(Apache 2.0, 5.6 GB of weights) replaced Mistral in the running cluster
+with Argo CD's auto-sync paused and a `kubectl patch` of the model argument,
+keeping the `local-mistral` served name LiteLLM and KEDA use; that's why
+both answer files record `local-mistral` (the file names and vLLM's log
+say which model it was). Nothing in Git changed.
+
+| | Mistral-7B | Qwen2.5-7B |
+|---|---|---|
+| correct | 20/30 | 22/30 |
+| faithful | 23/30 | 25/30 |
+| declines off-topic questions | 4/5 | 3/5 |
+| Spanish questions answered in Spanish | 0/7 | 4/7 |
+| answer latency, p50 | 2.6 s | 2.3 s |
+
+- **The language was the model, not the prompt**: Qwen answers 4 of the 7
+  Spanish questions in Spanish with the same prompt that got 0/7 from
+  Mistral in four runs.
+- **Correctness and faithfulness are a tie**: +2 of 30 each is within what
+  re-runs of the same model move (Mistral ranged 20-23 and 21-24).
+- **Qwen is worse at staying inside the docs**: asked the capital of
+  France and the 2022 World Cup winner, it answered from general knowledge
+  (Paris, Argentina) while saying the context didn't cover it. For a RAG
+  service that's the wrong failure.
+- Both miss the same retrieval-adjacent questions (the cluster's
+  Kubernetes version, spot fallback details), so the next gains there are in
+  retrieval, not the model.
+
+Not adopted yet: switching trades a clear language win for a refusal
+regression, measured on only 7 and 5 questions.
