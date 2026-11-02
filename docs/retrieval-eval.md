@@ -58,6 +58,16 @@ and the English difference between the two embeddinggemma variants is two
 questions. The set is small and was written by the same person who wrote the
 docs; the numbers rank configurations, they aren't a general quality claim.
 
+### Chunk headers (0.2.4)
+
+Each chunk is embedded as `<file> - <heading>` followed by its text (stored
+and shown to the model without it). A window from the middle of a long
+section, like CLAUDE.md's architecture notes, otherwise loses its topic.
+Measured on the same set and corpus: hit@4 0.900 -> 0.933, MRR 0.689 ->
+0.714, English hit@4 0.88 -> 0.92, no metric lower. Splitting those notes
+at their bold lead paragraphs as well was tried and dropped: hit@4 fell to
+0.867.
+
 ## Cost of the better model
 
 Measured in the image, ONNX on CPU:
@@ -99,15 +109,17 @@ any metric drops below `apps/rag/eval/baseline.json`:
 
 | Minimum | Measured |
 |---|---|
-| all hit@k 0.85 | 0.90 |
-| all MRR 0.63 | 0.672 |
+| all hit@k 0.90 | 0.933 |
+| all MRR 0.68 | 0.714 |
 | English hit@k 0.88 | 0.92 |
-| Spanish hit@k 0.60 | 0.80 |
+| Spanish hit@k 0.80 | 1.00 |
 
-Measured with this document in the corpus: adding it moved MRR from 0.694
-to 0.672 (it now outranks the source passage for a few questions about the
-RAG service) without changing hit@k. Each minimum lets one question slip: the corpus is the docs themselves, so
-every doc change re-ranks a little. Raise them when retrieval improves. Going
+Measured with 0.2.4 (chunk headers) and the docs as of the fifth EKS run.
+When the baseline was first set (0.2.0), adding this document to the
+corpus moved MRR from 0.694 to 0.672 (it outranked the source passage for a
+few questions about the RAG service) without changing hit@k. Each minimum
+lets one question slip: the corpus is the docs themselves, so every doc
+change re-ranks a little. Raise them when retrieval improves. Going
 back to bge-small would fail all four. The full per-question table
 goes to the job summary. It takes ~40 s on a laptop's 2 CPUs.
 

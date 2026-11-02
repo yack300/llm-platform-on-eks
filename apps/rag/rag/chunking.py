@@ -18,6 +18,14 @@ class Chunk:
     heading: str  # nearest Markdown heading, or the file name
     text: str
 
+    def embedding_text(self) -> str:
+        """What gets embedded: the chunk prefixed with where it comes from.
+        A window from the middle of a long section otherwise loses its
+        topic; with it, retrieval hit@4 went 0.900 -> 0.933 and MRR
+        0.689 -> 0.714 on eval/questions.yaml, no metric lower. The stored
+        and prompted text stays the plain chunk."""
+        return f"{self.source} - {self.heading}\n{self.text}"
+
 
 def split_sections(markdown: str) -> list[tuple[str, str]]:
     """(heading, body) pairs in document order. `#` inside code fences

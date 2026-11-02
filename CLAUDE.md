@@ -232,6 +232,8 @@ Prompts go as a single user message: Mistral's chat template rejects a system ro
 The embedding model is `google/embeddinggemma-300m` with task prefixes
 (`QUERY_PREFIX`/`DOCUMENT_PREFIX`), chosen over bge-small-en with `rag.evaluate`
 (docs/retrieval-eval.md): ~850 MiB resident, hence the 1.5 GiB limits in `k8s/rag/`.
+Chunks are embedded with a `<file> - <heading>` prefix (`Chunk.embedding_text`); the
+stored and prompted text is the plain chunk.
 Changing the model, prefixes, chunking or the docs themselves changes retrieval, and CI
 fails the image below `apps/rag/eval/baseline.json`; a doc edit that removes a
 question's `evidence` text fails it too (update `eval/questions.yaml`). Answer quality is a separate,

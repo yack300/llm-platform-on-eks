@@ -47,3 +47,9 @@ def test_oversized_paragraph_is_cut():
 def test_chunks_carry_source_and_heading():
     chunks = chunk_document("docs/a.md", "no heading text\n\n# Costs\n$1.48\n")
     assert [(c.source, c.heading) for c in chunks] == [("docs/a.md", "docs/a.md"), ("docs/a.md", "Costs")]
+
+
+def test_embedding_text_names_source_and_heading():
+    (chunk,) = chunk_document("docs/a.md", "# Costs\n$1.48\n")
+    assert chunk.embedding_text() == "docs/a.md - Costs\n# Costs\n$1.48"
+    assert chunk.text == "# Costs\n$1.48"  # what's stored and shown to the model

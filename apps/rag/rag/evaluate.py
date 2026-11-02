@@ -39,7 +39,7 @@ def build_index(chunks) -> QdrantClient:
         size=embeddings.dimension(), distance=models.Distance.COSINE))
     for i in range(0, len(chunks), settings.embed_batch):
         batch = chunks[i:i + settings.embed_batch]
-        store.upsert(c, COLLECTION, batch, embeddings.embed([ch.text for ch in batch]))
+        store.upsert(c, COLLECTION, batch, embeddings.embed([ch.embedding_text() for ch in batch]))
     return c
 
 

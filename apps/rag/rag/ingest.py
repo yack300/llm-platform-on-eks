@@ -43,7 +43,7 @@ def main() -> None:
 
     for i in range(0, len(chunks), settings.embed_batch):
         batch = chunks[i:i + settings.embed_batch]
-        store.upsert(c, collection, batch, embeddings.embed([ch.text for ch in batch]))
+        store.upsert(c, collection, batch, embeddings.embed([ch.embedding_text() for ch in batch]))
 
     removed = store.publish(c, collection)
     log.info("alias %s -> %s (removed %s) in %.1fs", settings.collection, collection,
