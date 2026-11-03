@@ -254,5 +254,6 @@ say which model it was). Nothing in Git changed.
   Kubernetes version, spot fallback details), so the next gains there are in
   retrieval, not the model.
 
-Not adopted yet: switching trades a clear language win for a refusal
-regression, measured on only 7 and 5 questions.
+Not adopted: the platform stays on Mistral-7B. Switching trades a clear
+language win for answering off-topic questions from general knowledge,
+which for a RAG service is the worse failure.
