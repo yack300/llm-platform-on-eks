@@ -93,8 +93,11 @@ echo "==> Applying RAG (ingestion Job + API)..."
 # A Job's pod template is immutable: recreate it so it runs again (on EKS,
 # Argo CD does this with a Sync hook).
 kubectl -n llm-platform delete job rag-ingest --ignore-not-found
+# No Tempo on kind (memory): drop the API's OTLP endpoint (the variable and
+# its value line), which leaves tracing off.
 for f in ../k8s/rag/*.yaml; do
-  sed 's#ghcr.io/yack300/llm-platform-rag:[^[:space:]]*#llm-platform-rag:dev#' "$f" | kubectl apply -f -
+  sed -e 's#ghcr.io/yack300/llm-platform-rag:[^[:space:]]*#llm-platform-rag:dev#' \
+      -e '/name: OTEL_EXPORTER_OTLP_ENDPOINT/,+1d' "$f" | kubectl apply -f -
 done
 
 echo "----------------------------------------------------------------------"

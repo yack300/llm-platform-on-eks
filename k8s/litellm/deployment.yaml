@@ -23,6 +23,16 @@ spec:
           envFrom:
             - secretRef:
                 name: litellm-secrets  # LITELLM_MASTER_KEY, ANTHROPIC_API_KEY, etc.
+          # Where the "otel" callback (configmap.yaml, EKS only) sends spans:
+          # Tempo's OTLP/HTTP endpoint, full path. Unused on kind, whose
+          # configmap-local.yaml has no otel callback.
+          env:
+            - name: OTEL_EXPORTER
+              value: otlp_http
+            - name: OTEL_ENDPOINT
+              value: http://tempo.monitoring.svc.cluster.local:4318/v1/traces
+            - name: OTEL_SERVICE_NAME
+              value: litellm
           volumeMounts:
             - name: config
               mountPath: /config

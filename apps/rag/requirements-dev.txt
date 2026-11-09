@@ -1,1 +1,4 @@
 pytest==9.1.1
+# tests/test_tracing.py; same versions as requirements.txt
+opentelemetry-sdk==1.45.2
+opentelemetry-exporter-otlp-proto-http==1.45.2

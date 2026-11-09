@@ -78,7 +78,7 @@ validate) passes on `main`.
 | 1 | Serving | vLLM + KEDA | MLOps: deploying and autoscaling an LLM on K8s |
 | 2 | Model Gateway | LiteLLM | AI Platform Engineering: unified multi-provider proxy |
 | 3 | RAG | Qdrant + own Python service | Ingestion Job and Q&A API over the project's own docs, image signed in CI |
-| 4 | Cost observability | Prometheus + Grafana + OpenCost/Kubecost | FinOps applied to AI: cost per request/token |
+| 4 | Cost observability | Prometheus + Grafana + Tempo + OpenCost/Kubecost | FinOps applied to AI: cost per request/token, one trace per RAG question |
 | 5 | Security | Trivy, Checkov, Kyverno, GitLeaks | DevSecOps: shift-left in the pipeline and in the cluster |
 
 ## Repo structure
@@ -100,7 +100,7 @@ llm-platform-on-eks/
 │   ├── storage/                # Default gp3 StorageClass (EKS ships none)
 │   ├── karpenter/              # NodePools + EC2NodeClasses: GPU nodes from 0, platform overflow
 │   ├── security/                # Kyverno policies + Trivy-operator config
-│   └── observability/         # kube-prometheus-stack values + ServiceMonitors (cost/latency)
+│   └── observability/         # kube-prometheus-stack + Tempo values, ServiceMonitors (cost/latency)
 ├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform,
 │                               # RAG image (tests, build, retrieval eval, Trivy, push + keyless cosign signing on main)
 ├── docs/

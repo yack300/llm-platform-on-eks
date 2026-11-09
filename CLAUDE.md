@@ -161,9 +161,10 @@ Both configmaps use the same `litellm-config` ConfigMap name and the same
 `model_name: local-mistral`, so the client-facing API is identical regardless of
 which backend is deployed — `scripts/deploy-local.sh` applies the local pair,
 production applies the GPU pair. Don't let these two drift apart on
-`litellm_settings`/`router_settings` without a reason. The one intentional
-difference: only the production config defines the `claude-fallback` model and
-`fallbacks`, since there's no Anthropic key locally.
+`litellm_settings`/`router_settings` without a reason. The intentional
+differences: only the production config defines the `claude-fallback` model and
+`fallbacks`, since there's no Anthropic key locally, and the `otel` callback,
+since kind runs no Tempo.
 
 **Terraform remote state has its own bootstrap module.** `terraform/bootstrap/`
 creates the S3 bucket (native S3 locking via `use_lockfile`, no DynamoDB) for
@@ -252,6 +253,18 @@ vLLM is idle (Karpenter removes them once empty), NodePools cap GPUs and extra C
 and KEDA's `minReplicaCount: 0` scales vLLM to zero when idle. Don't change these
 defaults without a reason — the whole point of the project is demonstrating
 cost-aware AI infra.
+
+**Tracing (Tempo, `rag/tracing.py`).** On EKS the RAG API and LiteLLM send
+OpenTelemetry spans over OTLP/HTTP to Tempo (`k8s/argocd/apps/tempo.yaml`,
+single binary, no persistent volume, 24 h retention), a Grafana datasource. One
+question is one trace: FastAPI's native telemetry opens the request span,
+`rag.ask` and its `rag.embed`/`rag.retrieve`/`rag.generate` stages hang under it
+(scores, sources, model, token counts as attributes), and LiteLLM's spans hang
+under `rag.generate` because the API injects a `traceparent` into the model call.
+`/healthz` and `/metrics` are excluded. Tracing is off whenever
+`OTEL_EXPORTER_OTLP_ENDPOINT` is unset (unit tests, CI's evaluation, kind, where
+`deploy-local.sh` strips it). LiteLLM's spans include the full prompt. The Tempo
+chart lives in grafana-community/helm-charts (deprecated in grafana/helm-charts).
 
 ## Repo-wide conventions
 

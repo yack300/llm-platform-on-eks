@@ -41,6 +41,10 @@ data:
       # in k8s/observability/servicemonitors.yaml.
       success_callback: ["prometheus"]
       failure_callback: ["prometheus"]
+      # Spans to Tempo, continuing the caller's traceparent (the RAG API
+      # sends one), so a RAG request and its model call are one trace.
+      # EKS only: kind runs no Tempo (configmap-local.yaml).
+      callbacks: ["otel"]
       # Drop request parameters a model doesn't support instead of failing
       # the call: claude-sonnet-5 only accepts temperature=1, so any client
       # sending temperature=0 had its claude-fallback rejected too.

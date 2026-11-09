@@ -1,0 +1,36 @@
+# Grafana Tempo: stores traces sent over OTLP by the RAG API and LiteLLM.
+# Wave 0, with the rest of the observability stack: the services that send
+# traces (waves 2-3) find it running.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  sources:
+    # The chart moved from grafana/helm-charts (deprecated there) to
+    # grafana-community/helm-charts.
+    - repoURL: https://grafana-community.github.io/helm-charts
+      chart: tempo
+      targetRevision: 3.2.1
+      helm:
+        releaseName: tempo
+        valueFiles:
+          - $values/k8s/observability/tempo-values.yaml
+    - repoURL: https://github.com/yack300/llm-platform-on-eks.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

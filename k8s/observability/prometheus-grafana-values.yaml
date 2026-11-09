@@ -43,6 +43,13 @@ grafana:
     dashboards:
       enabled: true
       label: grafana_dashboard
+  # Traces from the RAG API and LiteLLM (k8s/argocd/apps/tempo.yaml).
+  additionalDataSources:
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      access: proxy
+      url: http://tempo.monitoring.svc.cluster.local:3200
 
 # EKS manages the control plane, so etcd, the scheduler and the controller
 # manager can't be scraped; without this their targets show as down and

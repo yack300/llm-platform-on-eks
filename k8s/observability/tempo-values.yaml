@@ -1,0 +1,21 @@
+# Grafana Tempo (single binary): traces from the RAG API and LiteLLM over
+# OTLP, queried from Grafana (datasource in prometheus-grafana-values.yaml).
+# Chart: grafana-community/tempo, pinned in k8s/argocd/apps/tempo.yaml.
+#
+# No persistent volume: traces live in the container for 24 h (the chart's
+# default retention) or until the pod restarts, enough to follow requests on
+# a demo cluster without another EBS volume to pay for and clean up.
+tempo:
+  # Don't send anonymous usage reports to Grafana Labs.
+  reportingEnabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
