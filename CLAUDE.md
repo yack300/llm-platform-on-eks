@@ -264,7 +264,8 @@ under `rag.generate` because the API injects a `traceparent` into the model call
 `/healthz` and `/metrics` are excluded. Tracing is off whenever
 `OTEL_EXPORTER_OTLP_ENDPOINT` is unset (unit tests, CI's evaluation, kind, where
 `deploy-local.sh` strips it). LiteLLM's spans include the full prompt. The Tempo
-chart lives in grafana-community/helm-charts (deprecated in grafana/helm-charts).
+chart lives in grafana-community/helm-charts (deprecated in grafana/helm-charts). Measured results:
+docs/tracing.md.
 
 ## Repo-wide conventions
 

@@ -40,6 +40,10 @@ through the LiteLLM gateway. Full numbers, method and caveats in
   drops below the baseline. Answers are graded by Claude as judge (calibrated
   against known verdicts): Mistral-7B gets ~70-80% correct and faithful. Details
   in [docs/retrieval-eval.md](docs/retrieval-eval.md).
+- **Tracing shows where a RAG answer's time goes** (Tempo): warm, ~93% is the
+  model and the RAG service plus the gateway add under 200 ms; during a cold
+  start, ~75% of a fallback answer is LiteLLM retrying the scaled-to-zero
+  backend. Details in [docs/tracing.md](docs/tracing.md).
 - **Same GPU, ~6.8x the throughput** going from 1 to 8 concurrent requests,
   with p50 latency only going from 2.5 s to 3 s (vLLM continuous batching).
 - **Bugs that only showed up on real infrastructure**, fixed in this repo:
@@ -105,7 +109,8 @@ llm-platform-on-eks/
 │                               # RAG image (tests, build, retrieval eval, Trivy, push + keyless cosign signing on main)
 ├── docs/
 │   ├── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
-│   └── retrieval-eval.md       # RAG retrieval metrics + CI baseline, answer quality judged by Claude
+│   ├── retrieval-eval.md       # RAG retrieval metrics + CI baseline, answer quality judged by Claude
+│   └── tracing.md              # One trace per RAG question (Tempo): where the time goes
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
