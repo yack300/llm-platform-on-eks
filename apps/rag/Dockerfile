@@ -3,11 +3,11 @@
 #   docker build -f apps/rag/Dockerfile -t llm-platform-rag:dev .
 #
 # requirements.txt is the full lock, regenerated after editing requirements.in:
-#   docker run --rm -v "$PWD/apps/rag":/w -w /w python:3.12.15-slim sh -c \
+#   docker run --rm -v "$PWD/apps/rag":/w -w /w python:3.12.16-slim sh -c \
 #     'pip install -q -r requirements.in && pip freeze > requirements.txt'
 
 # Same base in both stages, pinned by digest.
-ARG PYTHON=python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+ARG PYTHON=python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 FROM ${PYTHON} AS build
 # Must match EMBEDDING_MODEL in rag/config.py.
@@ -21,6 +21,10 @@ RUN PYTHONPATH=/install/lib/python3.12/site-packages python -c \
  && chmod -R a+rX /models
 
 FROM ${PYTHON}
+# Debian security fixes that haven't reached the python image yet (zlib1g
+# CVE-2026-76844/85091 on 3.12.16-slim): CI's Trivy scan fails on fixed
+# CRITICAL/HIGH vulnerabilities, and this keeps the base pin from blocking it.
+RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 LABEL org.opencontainers.image.source=https://github.com/yack300/llm-platform-on-eks \
       org.opencontainers.image.description="RAG ingestion and API for llm-platform-on-eks"
 COPY --from=build /install /usr/local

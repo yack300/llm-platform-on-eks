@@ -59,7 +59,7 @@ docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summa
 # require-image-signature, e.g.
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/disallow-latest-tag.yaml k8s/security/kyverno-policies/disallow-privileged-containers.yaml k8s/security/kyverno-policies/require-resource-limits.yaml k8s/security/kyverno-policies/restrict-host-network.yaml -r k8s/vllm/deployment.yaml -r k8s/vllm/local-cpu-mock-deployment.yaml -r k8s/litellm/deployment.yaml -r k8s/rag/api.yaml -r k8s/rag/ingest-job.yaml
 # RAG unit tests (no model or Qdrant needed) and image build (from the repo root)
-docker run --rm -v "$PWD/apps/rag":/app -w /app python:3.12.15-slim sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q tests'
+docker run --rm -v "$PWD/apps/rag":/app -w /app python:3.12.16-slim sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q tests'
 docker build -f apps/rag/Dockerfile -t llm-platform-rag:dev .
 # Retrieval evaluation of that image (CI runs it with the baseline; docs/retrieval-eval.md)
 docker run --rm -v "$PWD/apps/rag/eval":/eval:ro llm-platform-rag:dev python -m rag.evaluate --questions /eval/questions.yaml --baseline /eval/baseline.json
