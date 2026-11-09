@@ -32,7 +32,13 @@ data:
     router_settings:
       # Automatic fallback if the local model doesn't respond
       fallbacks: [{"local-mistral": ["claude-fallback"]}]
-      num_retries: 2
+      # No retries before falling back: with vLLM scaled to zero, two retries
+      # of the refused connection took ~6.3 s of an 8.6 s fallback answer
+      # (docs/tracing.md); without them it falls back in under a second.
+      # The first attempt still reaches local-mistral, so KEDA's
+      # gateway-demand trigger counts it and wakes vLLM. A transient vLLM
+      # error now goes to claude-fallback instead of being retried.
+      num_retries: 0
 
     litellm_settings:
       # This is what feeds the cost observability layer (Phase 4): exposes

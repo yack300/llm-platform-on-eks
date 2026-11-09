@@ -19,6 +19,8 @@ data:
           api_key: "no-real-key-needed-locally"
 
     router_settings:
+      # Retries stay here: there's no fallback model locally to take over
+      # (production uses num_retries: 0 and falls back instead).
       num_retries: 2
 
     litellm_settings:

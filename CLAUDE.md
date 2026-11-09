@@ -163,8 +163,9 @@ which backend is deployed — `scripts/deploy-local.sh` applies the local pair,
 production applies the GPU pair. Don't let these two drift apart on
 `litellm_settings`/`router_settings` without a reason. The intentional
 differences: only the production config defines the `claude-fallback` model and
-`fallbacks`, since there's no Anthropic key locally, and the `otel` callback,
-since kind runs no Tempo.
+`fallbacks`, since there's no Anthropic key locally (and so production sets
+`num_retries: 0`, falling back at once instead of retrying a scaled-to-zero
+vLLM), and the `otel` callback, since kind runs no Tempo.
 
 **Terraform remote state has its own bootstrap module.** `terraform/bootstrap/`
 creates the S3 bucket (native S3 locking via `use_lockfile`, no DynamoDB) for

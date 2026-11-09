@@ -63,6 +63,24 @@ down (`num_retries: 2` with `fallbacks` in `router_settings`). Metrics only
 showed a slow request; the trace shows the fix belongs in LiteLLM's retry
 and fallback settings, not in the fallback model.
 
+**The fix, measured locally.** The same situation reproduced with LiteLLM
+v1.99.1 in Docker (local model's address refusing connections, fallback
+answering), three requests in a row:
+
+| `router_settings` | 1st | 2nd | 3rd |
+|---|---|---|---|
+| `num_retries: 2` (before) | 7.5 s | 5.5 s | 4.1 s |
+| `num_retries: 0` (now, EKS config) | 0.87 s | 0.05 s | 0.04 s |
+| `num_retries: 2` + `retry_policy: {InternalServerErrorRetries: 0}` | 5.7 s | 4.5 s | 4.3 s |
+
+A per-error `retry_policy` doesn't help: a refused connection isn't an
+internal server error to LiteLLM. With no retries, the first attempt still
+goes to local-mistral and LiteLLM's `litellm_deployment_total_requests_total`
+for it still counts every request (5 of 5 in the same test), which is what
+KEDA's `gateway-demand` trigger reads to wake vLLM. The cost: a transient
+vLLM error is answered by claude-fallback instead of being retried. Not yet
+measured on EKS.
+
 The first embedding after the API starts is slower (433 ms vs ~170 ms) while
 ONNX Runtime warms up.
 
