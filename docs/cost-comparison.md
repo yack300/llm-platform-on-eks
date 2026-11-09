@@ -287,8 +287,6 @@ releases, ~45 minutes of GPU):
 | S3 (Terraform state) | < $0.01 |
 | **Total before tax** | **$1.07** |
 
-All four EKS runs: $1.48 + $1.45 + $2.12 + $1.07 = **$6.12**.
-
 ## Fifth run (2026-10-26): judging RAG answers
 
 Mistral's answers to the evaluation set, graded by Claude, across three RAG
@@ -312,7 +310,41 @@ of GPU):
 The judge is billed by Anthropic, not AWS: ~95 calls (~90k input, ~25k
 output tokens) per graded run.
 
-All five EKS runs: $6.12 + $0.90 = **$7.02**.
+## Sixth run (2026-11-02): Mistral-7B vs Qwen2.5-7B
+
+Both models answered the evaluation set on the same cluster and RAG version
+(0.2.4); results in [retrieval-eval.md](retrieval-eval.md#mistral-7b-vs-qwen25-7b-sixth-eks-run-2026-11-02).
+The GPU node came up on-demand (no spot capacity).
+
+What this run cost (Cost Explorer; ~1 h 20 min of cluster time, ~40 minutes
+of GPU):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU node) | $0.44 |
+| EC2 other (EBS volumes, data transfer) | $0.12 |
+| EKS control plane | $0.12 |
+| KMS (includes a key not created by this project) | $0.07 |
+| VPC (public IPv4 addresses) | $0.02 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$0.76** |
+
+About $0.15 of it was ~16 minutes of cluster time lost to a broken wait loop
+in a helper script (Qwen was actually ready in ~4 minutes).
+
+## Total cost of all EKS runs
+
+What every EKS session cost, from Cost Explorer, before tax:
+
+| Run | Date | What it tested | Cost |
+|---|---|---|---|
+| First | 2026-10-06 | Platform end to end: benchmark, scale-to-zero | $1.48 |
+| Second | 2026-10-13 | Image cache on a managed node group | $1.45 |
+| Third | 2026-10-14 | Karpenter with the image cache | $2.12 |
+| Fourth | 2026-10-20 | RAG service with signed images | $1.07 |
+| Fifth | 2026-10-26 | Judging RAG answers | $0.90 |
+| Sixth | 2026-11-02 | Mistral-7B vs Qwen2.5-7B | $0.76 |
+| **All six runs** | | | **$7.78** |
 
 ## What the whole session cost
 
