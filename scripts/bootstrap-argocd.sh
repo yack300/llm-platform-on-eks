@@ -40,6 +40,18 @@ else
   echo "    Secret litellm-secrets already exists, skipping creation."
 fi
 
+echo "==> Creating the Grafana admin secret (if it doesn't exist)..."
+# Referenced by grafana.admin.existingSecret in prometheus-grafana-values.yaml.
+# Created once and kept, so Grafana's password doesn't change on every Argo CD
+# sync (the chart's generated one did).
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
+  kubectl -n monitoring create secret generic grafana-admin \
+    --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -hex 16)"
+else
+  echo "    Secret grafana-admin already exists, skipping creation."
+fi
+
 echo "==> Applying the root Application (app of apps)..."
 kubectl apply -f ../k8s/argocd/root.yaml
 
@@ -49,6 +61,9 @@ echo "Watch it:  kubectl -n argocd get applications -w"
 echo "UI:        kubectl -n argocd port-forward svc/argocd-server 8080:443"
 echo "           https://localhost:8080  user: admin  password:"
 echo "           kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo"
+echo "Grafana:   kubectl -n monitoring port-forward svc/prometheus-grafana 3000:80"
+echo "           http://localhost:3000  user: admin  password:"
+echo "           kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo"
 echo "LiteLLM master key:"
 echo "           kubectl -n llm-platform get secret litellm-secrets -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d; echo"
 echo "Before terraform destroy, run ./scripts/teardown-eks.sh (deletes PVCs/EBS volumes)."

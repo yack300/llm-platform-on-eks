@@ -31,7 +31,12 @@ prometheus:
 
 grafana:
   enabled: true
-  adminPassword: "" # TODO: inject via external secret (SealedSecret/External Secrets), never in plaintext
+  # Admin credentials from a Secret created by scripts/bootstrap-argocd.sh
+  # (deploy-local.sh on kind), never in Git. Without it the chart generates a
+  # random password on every render: Argo CD re-renders, the Secret changes,
+  # and the password Grafana stored at first start no longer matches (401).
+  admin:
+    existingSecret: grafana-admin
   persistence:
     enabled: true
     size: 2Gi

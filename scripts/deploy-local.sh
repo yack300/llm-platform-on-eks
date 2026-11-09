@@ -33,6 +33,13 @@ helm upgrade --install kyverno kyverno/kyverno --namespace kyverno --create-name
 echo "==> Installing kube-prometheus-stack (Prometheus + Grafana)..."
 # Required both by the KEDA trigger (request queue) and by the cost
 # observability layer (Phase 4). See k8s/observability/.
+# Grafana's admin credentials (grafana.admin.existingSecret), as bootstrap-argocd.sh
+# creates them on EKS.
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
+  kubectl -n monitoring create secret generic grafana-admin \
+    --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -hex 16)"
+fi
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
 helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace -f ../k8s/observability/prometheus-grafana-values.yaml \
