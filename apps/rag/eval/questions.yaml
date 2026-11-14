@@ -125,6 +125,90 @@ questions:
     question: Why does LiteLLM drop unsupported parameters?
     evidence: ["drop_params"]
     reference: "claude-fallback (claude-sonnet-5) rejects temperature other than 1, so LiteLLM drops parameters a model doesn't support (drop_params)."
+  - id: embedding-model
+    question: Which embedding model does the RAG service use?
+    evidence: ["embeddinggemma-300m"]
+    reference: "google/embeddinggemma-300m, with task prefixes for queries and documents."
+  - id: embedding-memory
+    question: How much memory does the embedding model need?
+    evidence: ["~850 MiB"]
+    reference: "About 850 MiB resident (vs ~350 MiB for bge-small), which is why the API and ingestion Job have 1.5 GiB limits."
+  - id: local-mock-model
+    question: What model answers when the platform runs locally without a GPU?
+    evidence: ["qwen2.5:0.5b"]
+    reference: "An Ollama mock running qwen2.5:0.5b, behind the same local-mistral name, so the API is identical."
+  - id: kyverno-deployment
+    question: What does a new Deployment need so Kyverno admits it?
+    evidence: ["allowPrivilegeEscalation: false"]
+    reference: "A pinned image tag, securityContext.allowPrivilegeEscalation: false, and CPU/memory requests and limits."
+  - id: grafana-password
+    question: Where does Grafana's admin password come from?
+    evidence: ["Secret created at bootstrap"]
+    reference: "From a Secret created at bootstrap, because the chart's generated password changed on every Argo CD sync."
+
+  # --- Measurements and incidents ---
+  - id: cost-per-token-8
+    question: How much does a million output tokens cost at 8 concurrent requests?
+    evidence: ["$0.43"]
+    reference: "$0.43 on-demand and $0.22 on spot, counting only the GPU node."
+  - id: idle-gpu-month
+    question: What does a GPU node cost if it's kept running all month?
+    evidence: ["~$384/month"]
+    reference: "About $384/month for an on-demand g4dn.xlarge, whether it serves anything or not."
+  - id: fast-snapshot-restore
+    question: Why not use EBS fast snapshot restore for the image cache?
+    evidence: ["~$540/month"]
+    reference: "It bills per hour per AZ even when nothing is restored (~$540/month per AZ), which defeats scale-to-zero."
+  - id: data-transfer-cost
+    question: Why did data transfer cost more on the third run?
+    evidence: ["3.9 GB of weights"]
+    reference: "Every vLLM start downloads the model's 3.9 GB of weights from Hugging Face; the KEDA scale loop caused ~14 starts (~55 GB)."
+  - id: karpenter-inline-policy
+    question: Why is Karpenter's controller IAM policy an inline policy?
+    evidence: ["6,144"]
+    reference: "It exceeds the 6,144-character limit of a managed policy."
+  - id: spot-node-az
+    question: What happened to Qdrant when a spot node was replaced in another availability zone?
+    evidence: ["can't follow them across AZs"]
+    reference: "It stayed Pending: its EBS volume can't follow the pod across AZs. Not fixed."
+  - id: bottlerocket-ready
+    question: How quickly do Bottlerocket GPU nodes become Ready compared to AL2023?
+    evidence: ["Bottlerocket GPU nodes join faster"]
+    reference: "Ready ~15 s after the EC2 node object appears (~50 s after the scale-up), vs ~1.5 min for AL2023."
+
+  # --- Evaluation and tracing ---
+  - id: judge-tool
+    question: How is the quality of the RAG answers graded?
+    evidence: ["promptfoo"]
+    reference: "Claude (claude-sonnet-5) as judge through promptfoo, with pass/fail checks: correct, faithful, declines and language."
+  - id: judge-calibration
+    question: How do you know the judge's verdicts can be trusted?
+    evidence: ["calibration.json"]
+    reference: "judge/calibration.json has five hand-written answers with 14 known verdicts; the summary fails if the judge disagrees with any."
+  - id: mistral-spanish
+    question: Why does Mistral answer Spanish questions in English?
+    evidence: ["context's language"]
+    reference: "Mistral-7B answers in the language of the context, whatever the prompt says; it's a model limitation (Qwen answered 4 of 7 in Spanish with the same prompt)."
+  - id: qwen-rejected
+    question: Why wasn't Qwen2.5-7B adopted?
+    evidence: ["Not adopted"]
+    reference: "Its language win came with answering off-topic questions from general knowledge, the worse failure for a RAG service; correctness was a tie."
+  - id: trace-retention
+    question: How long are the traces kept?
+    evidence: ["24 hours", "24 h retention"]
+    reference: "24 hours, or until the Tempo pod restarts: single binary, no persistent volume."
+  - id: trace-slowest-stage
+    question: Which stage takes most of a RAG answer's time?
+    evidence: ["~93%"]
+    reference: "Generation: rag.generate is ~93% of a warm answer (2.74 s of 2.93 s p50); embedding ~172 ms, Qdrant ~6 ms."
+  - id: trace-litellm-spans
+    question: How do LiteLLM's spans end up in the same trace as the RAG API's?
+    evidence: ["traceparent"]
+    reference: "The API injects a traceparent header into the model call, and LiteLLM's otel callback continues that trace."
+  - id: fallback-latency
+    question: Why was the fallback answer so slow during a cold start?
+    evidence: ["~6.3 s"]
+    reference: "~6.3 s of the 8.57 s went to LiteLLM retrying the scaled-to-zero vLLM (num_retries: 2) before falling back; production now uses num_retries: 0."
 
   # --- Spanish (the embedding model may be English-only) ---
   - id: es-k8s-version
@@ -152,6 +236,36 @@ questions:
     lang: es
     evidence: ["gateway-demand"]
     reference: "El trigger gateway-demand de KEDA lee la métrica de peticiones de LiteLLM (que siempre corre) y escala vLLM de 0 a 1; Karpenter lanza un nodo GPU y mientras tanto LiteLLM usa claude-fallback."
+  - id: es-embedding-model
+    question: ¿Qué modelo de embeddings usa el servicio RAG?
+    lang: es
+    evidence: ["embeddinggemma-300m"]
+    reference: "google/embeddinggemma-300m, con prefijos de tarea para consultas y documentos."
+  - id: es-throughput
+    question: ¿Cuántos tokens por segundo genera vLLM con 8 peticiones concurrentes?
+    lang: es
+    evidence: ["342"]
+    reference: "342 tokens de salida por segundo en la primera sesión (310 en la segunda)."
+  - id: es-teardown
+    question: ¿Qué hay que ejecutar antes de terraform destroy?
+    lang: es
+    evidence: ["teardown-eks.sh"]
+    reference: "scripts/teardown-eks.sh: borra las apps, los nodos de Karpenter y los volúmenes EBS de los PVC, que terraform destroy dejaría huérfanos y facturando."
+  - id: es-cold-fallback
+    question: ¿Quién responde las peticiones mientras vLLM arranca en frío?
+    lang: es
+    evidence: ["route to `claude-fallback`", "send `local-mistral` requests"]
+    reference: "LiteLLM, con sus fallbacks, manda las peticiones de local-mistral a claude-fallback (la API de Anthropic)."
+  - id: es-slowest-stage
+    question: ¿En qué etapa se va la mayor parte del tiempo de una respuesta del RAG?
+    lang: es
+    evidence: ["~93%"]
+    reference: "En la generación del modelo: ~93% de una respuesta en caliente; el embedding ~172 ms y Qdrant ~6 ms."
+  - id: es-qwen-rejected
+    question: ¿Por qué no se adoptó Qwen2.5-7B?
+    lang: es
+    evidence: ["Not adopted"]
+    reference: "Porque respondía preguntas fuera de tema con conocimiento general, el peor fallo para un RAG; en exactitud empató con Mistral."
 
   # --- No answer in the docs ---
   - id: off-capital
@@ -169,5 +283,24 @@ questions:
     answerable: false
   - id: off-worldcup
     question: ¿Quién ganó el mundial de fútbol de 2022?
+    lang: es
+    answerable: false
+  - id: off-paella
+    question: ¿Cómo se prepara una paella?
+    lang: es
+    answerable: false
+  # Technical, close to the corpus's vocabulary, but not about this platform:
+  # the hardest kind for a similarity threshold.
+  - id: off-python-sort
+    question: How do I sort a list in Python?
+    answerable: false
+  - id: off-raspberry-k8s
+    question: How do I install Kubernetes on a Raspberry Pi?
+    answerable: false
+  - id: off-openai-price
+    question: How much does the OpenAI API cost per million tokens?
+    answerable: false
+  - id: off-rain
+    question: ¿Va a llover mañana en Madrid?
     lang: es
     answerable: false

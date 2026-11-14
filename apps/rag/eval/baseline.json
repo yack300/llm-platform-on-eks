@@ -1,9 +1,9 @@
 {
-  "note": "Minimums CI enforces (python -m rag.evaluate --baseline). Measured with google/embeddinggemma-300m, task prefixes and chunk headers (0.2.4) on 2026-11-02: all hit@k 0.933, mrr 0.714; en hit@k 0.92; es hit@k 1.0. Each minimum allows one question to slip, since the corpus is the docs and every doc change re-ranks a little; raise them when retrieval improves. See docs/retrieval-eval.md.",
+  "note": "Minimums CI enforces (python -m rag.evaluate --baseline). Measured with google/embeddinggemma-300m, task prefixes and chunk headers (0.2.5) on the 66-question set on 2026-11-14: all hit@k 0.857, mrr 0.743; en hit@k 0.867; es hit@k 0.818. Each minimum allows one question to slip, since the corpus is the docs and every doc change re-ranks a little; raise them when retrieval improves. See docs/retrieval-eval.md.",
   "min": {
-    "all.hit@k": 0.9,
-    "all.mrr": 0.68,
-    "en.hit@k": 0.88,
-    "es.hit@k": 0.8
+    "all.hit@k": 0.83,
+    "all.mrr": 0.72,
+    "en.hit@k": 0.84,
+    "es.hit@k": 0.72
   }
 }

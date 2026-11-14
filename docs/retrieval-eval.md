@@ -13,13 +13,15 @@ corpus (README, CLAUDE.md, docs/) into an in-memory Qdrant with the same
 chunking and embeddings as the ingestion Job, then searches every question in
 `apps/rag/eval/questions.yaml`:
 
-- **30 answerable questions** (25 English, 5 Spanish), each with `evidence`:
+- **56 answerable questions** (45 English, 11 Spanish), each with `evidence`:
   text that must appear in a retrieved chunk for it to count as a hit.
   Evidence is matched against chunk text rather than chunk ids, so changing
   the chunking doesn't invalidate the set; if a doc edit removes an evidence
   string, the evaluator fails and names the question to update.
-- **5 unanswerable questions** (capital of France, today's date, ...), scored
-  on similarity only.
+- **10 unanswerable questions**, scored on similarity only: off-topic ones
+  (capital of France, today's date, ...) and technical ones close to the
+  corpus's vocabulary but not about this platform (OpenAI's API price,
+  Kubernetes on a Raspberry Pi).
 
 Metrics, at `k=4` (the chunks the model gets as context):
 
@@ -36,7 +38,8 @@ answers well is a different question (LLM-as-judge, not done yet).
 
 ## Results
 
-All on the same 35 questions and corpus, CHUNK_SIZE 1000 unless noted.
+All on the original 35 questions and the corpus at the time, CHUNK_SIZE 1000
+unless noted.
 
 | Embedding model | hit@1 | hit@4 | MRR | Spanish hit@4 | Separation |
 |---|---|---|---|---|---|
@@ -68,6 +71,31 @@ Measured on the same set and corpus: hit@4 0.900 -> 0.933, MRR 0.689 ->
 at their bold lead paragraphs as well was tried and dropped: hit@4 fell to
 0.867.
 
+### A larger set (2026-11-14)
+
+On 35 questions each miss moved hit@4 by 0.033, and with the docs as of the
+seventh run the original set sat exactly at its 0.90 minimum (`served-model`,
+`spot-fallback` and `ttft` missed). The set grew to 66: questions on what
+had none (tracing, the judge, the model comparison, Kyverno, the local
+profile, the cost findings), six more in Spanish and five more unanswerable.
+They were written from the docs before running them, and the ones that miss
+were kept as they are; rewording a question or its evidence until it hits
+would only measure the set.
+
+| Set | hit@1 | hit@4 | MRR | English hit@4 | Spanish hit@4 | Separation |
+|---|---|---|---|---|---|---|
+| Original 35 | 0.70 | 0.90 | 0.78 | 0.88 | 1.00 | -0.008 |
+| **66 (now)** | **0.66** | **0.86** | **0.74** | **0.87** | **0.82** | **-0.272** |
+
+Same image, model and chunking: the numbers are lower because the new
+questions are harder, not because retrieval changed. Five new questions miss,
+and they share a pattern: the answer is one cell or line inside a long
+passage about something broader (the embedding model's name in the
+comparison table, the ~93% generation share in the tracing table, the
+Deployment requirements in CLAUDE.md's CI notes), and a broader passage,
+often a page's introduction, outranks it. A judged run of the larger set
+takes about twice the judge calls (and cost) of the original one.
+
 ## Cost of the better model
 
 Measured in the image, ONNX on CPU:
@@ -89,7 +117,7 @@ first time a node runs the image.
 The trade-off was taken for multilingual retrieval (Spanish hit@4 0.40 ->
 0.80) and +6 answerable questions in the top 4 (21 -> 27 of 30).
 
-## Similarity threshold: not yet
+## Similarity threshold: ruled out
 
 The idea from the fourth run was to skip the model call when the best chunk
 scores too low. With bge-small, an unanswerable question outscored a real hit
@@ -97,9 +125,16 @@ scores too low. With bge-small, an unanswerable question outscored a real hit
 the gap is +0.010 (best unanswerable 0.256, weakest hit 0.266): technically
 separable, but too thin to trust on 5 unanswerable questions, and it didn't
 survive adding this document to the corpus (-0.043: a weak hit's best chunk
-is now this page). The model's own
-"say you don't know" instruction handles them for now; a threshold needs more
-negative questions first.
+is now this page).
+
+The larger set settled it: an unanswerable question about the platform's
+own topic scores like a real match. "How much does the OpenAI API cost per
+million tokens?" scores 0.52, higher than the best chunk of 29 of the 48
+questions retrieval gets right, and "How do I install Kubernetes on a
+Raspberry Pi?" 0.47, higher than 16. Off-topic questions stay at 0.10-0.27.
+A similarity threshold would only catch the questions that were never the
+problem, so there won't be one: declining is the model's job (the judge's
+`declines` check).
 
 ## In CI
 
@@ -109,19 +144,18 @@ any metric drops below `apps/rag/eval/baseline.json`:
 
 | Minimum | Measured |
 |---|---|
-| all hit@k 0.90 | 0.933 |
-| all MRR 0.68 | 0.714 |
-| English hit@k 0.88 | 0.92 |
-| Spanish hit@k 0.80 | 1.00 |
+| all hit@k 0.83 | 0.857 (48 of 56) |
+| all MRR 0.72 | 0.743 |
+| English hit@k 0.84 | 0.867 (39 of 45) |
+| Spanish hit@k 0.72 | 0.818 (9 of 11) |
 
-Measured with 0.2.4 (chunk headers) and the docs as of the fifth EKS run.
-When the baseline was first set (0.2.0), adding this document to the
+Measured with 0.2.5 on the 66-question set and the docs as of the seventh
+EKS run. When the baseline was first set (0.2.0), adding this document to the
 corpus moved MRR from 0.694 to 0.672 (it outranked the source passage for a
 few questions about the RAG service) without changing hit@k. Each minimum
 lets one question slip: the corpus is the docs themselves, so every doc
-change re-ranks a little. Raise them when retrieval improves. Going
-back to bge-small would fail all four. The full per-question table
-goes to the job summary. It takes ~40 s on a laptop's 2 CPUs.
+change re-ranks a little. Raise them when retrieval improves. The full
+per-question table goes to the job summary. It takes ~40 s on a laptop's 2 CPUs.
 
 Locally, with the image built (`docker build -f apps/rag/Dockerfile -t
 llm-platform-rag:dev .`):

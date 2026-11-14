@@ -34,11 +34,12 @@ through the LiteLLM gateway. Full numbers, method and caveats in
   300 MiB/s. The same snapshot had made it *slower* (~14.5 min) with an EKS
   managed node group, which drops the initialization rate. Details in
   [docs/cost-comparison.md](docs/cost-comparison.md#third-run-2026-10-14-karpenter-image-cache-that-works).
-- **RAG retrieval measured in CI** on 30 questions with known answers:
+- **RAG retrieval measured in CI** on questions with known answers:
   switching to a multilingual embedding model took hit@4 from 0.70 to 0.90
   (Spanish 0.40 -> 0.80) for ~0.5 GiB more memory; CI fails the image if it
-  drops below the baseline. Answers are graded by Claude as judge (calibrated
-  against known verdicts): Mistral-7B gets ~70-80% correct and faithful. Details
+  drops below the baseline (now 66 questions, 0.86 hit@4). Answers are
+  graded by Claude as judge (calibrated against known verdicts): Mistral-7B
+  gets ~70-80% correct and faithful. Details
   in [docs/retrieval-eval.md](docs/retrieval-eval.md).
 - **Tracing shows where a RAG answer's time goes** (Tempo): warm, ~93% is the
   model and the RAG service plus the gateway add under 200 ms; during a cold
