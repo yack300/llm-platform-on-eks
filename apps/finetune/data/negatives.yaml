@@ -1,0 +1,284 @@
+# Unanswerable questions for the fine-tuning dataset, with the answer the
+# model should give: decline in one sentence, in the question's language,
+# without answering from general knowledge (generate.py --extend
+# --negatives-file). Written by hand rather than by the API teacher: a good
+# decline doesn't depend on the retrieved passages. Topics avoid those of
+# eval/questions.yaml's unanswerable questions (cooking cakes and paella,
+# capitals, football, stock prices, dates, weather, Python sorting,
+# Raspberry Pi, OpenAI pricing).
+questions:
+  # --- Off-topic ---
+  - lang: en
+    question: Who painted the ceiling of the Sistine Chapel?
+    answer: I don't know; the passages are about llm-platform-on-eks and don't mention the Sistine Chapel.
+  - lang: en
+    question: How many players are on a basketball team on the court?
+    answer: The passages don't cover basketball, so I can't answer that.
+  - lang: en
+    question: What's the best time of year to visit Japan?
+    answer: I don't know; the documentation doesn't cover travel.
+  - lang: en
+    question: How long should I boil an egg for a soft yolk?
+    answer: The passages don't contain cooking information, so I don't know.
+  - lang: en
+    question: Who wrote One Hundred Years of Solitude?
+    answer: I don't know; the provided context doesn't mention that book.
+  - lang: en
+    question: How far is the Moon from the Earth?
+    answer: The passages don't cover astronomy, so I can't answer that.
+  - lang: en
+    question: What are some good exercises to strengthen my lower back?
+    answer: I don't know; the documentation doesn't cover exercise or health.
+  - lang: en
+    question: How do I get a red wine stain out of a carpet?
+    answer: The passages don't contain that information.
+  - lang: en
+    question: When did the Roman Empire fall?
+    answer: I don't know; the context is about llm-platform-on-eks, not history.
+  - lang: en
+    question: Which planet has the most moons?
+    answer: The provided passages don't cover that, so I don't know.
+  - lang: en
+    question: Can you recommend a good science fiction novel?
+    answer: I can't; the passages don't include book recommendations.
+  - lang: en
+    question: How often should I water a cactus?
+    answer: I don't know; the documentation doesn't cover gardening.
+  - lang: en
+    question: What is the tallest mountain in South America?
+    answer: The passages don't contain that information.
+  - lang: en
+    question: How do I train my dog to stop barking at night?
+    answer: I don't know; the context doesn't cover dog training.
+  - lang: en
+    question: Who won the Nobel Prize in Literature last year?
+    answer: The passages don't mention Nobel Prizes, so I can't answer that.
+  - lang: es
+    question: ¿Quién pintó La noche estrellada?
+    answer: No lo sé; los pasajes tratan sobre llm-platform-on-eks y no mencionan esa pintura.
+  - lang: es
+    question: ¿Cuántos huesos tiene el cuerpo humano?
+    answer: Los pasajes no contienen esa información, así que no lo sé.
+  - lang: es
+    question: ¿Qué necesito para sacar el pasaporte mexicano?
+    answer: No lo sé; la documentación no cubre trámites de pasaporte.
+  - lang: es
+    question: ¿Cómo se hace un buen guacamole?
+    answer: Los pasajes no incluyen recetas, así que no puedo responder eso.
+  - lang: es
+    question: ¿En qué año llegó Cristóbal Colón a América?
+    answer: No lo sé; el contexto no trata temas de historia.
+  - lang: es
+    question: ¿Cuál es el río más largo del mundo?
+    answer: Los pasajes no contienen esa información.
+  - lang: es
+    question: ¿Qué ejercicios me recomiendas para correr un maratón?
+    answer: No lo sé; la documentación no cubre entrenamiento deportivo.
+  - lang: es
+    question: ¿Cómo quito el óxido de una bicicleta?
+    answer: Los pasajes no tratan ese tema, así que no lo sé.
+  - lang: es
+    question: ¿Quién escribió Don Quijote de la Mancha?
+    answer: No lo sé; el contexto proporcionado no menciona ese libro.
+  - lang: es
+    question: ¿Por qué el cielo es azul?
+    answer: Los pasajes no explican eso, así que no puedo responderlo.
+  - lang: es
+    question: ¿Qué película ganó el Óscar a mejor película el año pasado?
+    answer: No lo sé; la documentación no menciona premios de cine.
+  - lang: es
+    question: ¿Cada cuánto debo cambiar el aceite de mi coche?
+    answer: Los pasajes no contienen información sobre mantenimiento de coches.
+  - lang: es
+    question: ¿Qué idiomas se hablan en Suiza?
+    answer: No lo sé; el contexto no cubre ese tema.
+  - lang: es
+    question: ¿Cómo se cuida una orquídea en casa?
+    answer: Los pasajes no tratan de jardinería, así que no lo sé.
+  - lang: es
+    question: ¿Cuál es el animal más rápido del mundo?
+    answer: No lo sé; esa información no está en los pasajes.
+
+  # --- General tech, not about this project ---
+  - lang: en
+    question: What's the difference between a process and a thread?
+    answer: I don't know from these passages; they don't explain processes and threads.
+  - lang: en
+    question: How do I reverse a string in JavaScript?
+    answer: The passages don't cover JavaScript, so I can't answer that.
+  - lang: en
+    question: How do I undo the last commit in Git?
+    answer: I don't know; the documentation doesn't explain Git commands.
+  - lang: en
+    question: What is the difference between TCP and UDP?
+    answer: The passages don't cover networking protocols, so I don't know.
+  - lang: en
+    question: How do I center a div with CSS?
+    answer: I don't know; the context doesn't contain CSS information.
+  - lang: en
+    question: Should I buy a laptop with 16 or 32 GB of RAM for programming?
+    answer: The passages don't give laptop recommendations, so I can't answer that.
+  - lang: en
+    question: What does the SQL JOIN keyword do?
+    answer: I don't know; the documentation doesn't cover SQL.
+  - lang: en
+    question: How do I set up a VPN on Windows 11?
+    answer: The passages don't contain that information.
+  - lang: en
+    question: What is a closure in programming?
+    answer: I don't know; the provided passages don't explain closures.
+  - lang: en
+    question: How do Azure Functions bill for execution time?
+    answer: The passages don't cover Azure Functions pricing, so I don't know.
+  - lang: en
+    question: What is the time complexity of quicksort?
+    answer: I don't know; that isn't in the documentation.
+  - lang: en
+    question: How do I configure a static IP on Ubuntu?
+    answer: The passages don't explain Ubuntu network settings, so I can't answer that.
+  - lang: en
+    question: What's new in the latest version of React?
+    answer: I don't know; the context doesn't mention React.
+  - lang: en
+    question: How do I write a regular expression to validate an email address?
+    answer: The passages don't contain that, so I don't know.
+  - lang: en
+    question: What's the difference between REST and GraphQL?
+    answer: I don't know; the documentation doesn't compare REST and GraphQL.
+  - lang: es
+    question: ¿Cuál es la diferencia entre una lista y una tupla en Python?
+    answer: No lo sé; los pasajes no explican estructuras de datos de Python.
+  - lang: es
+    question: ¿Cómo instalo Node.js en macOS?
+    answer: Los pasajes no cubren la instalación de Node.js, así que no lo sé.
+  - lang: es
+    question: ¿Qué es la programación orientada a objetos?
+    answer: No lo sé; el contexto no trata ese tema.
+  - lang: es
+    question: ¿Cómo recupero un archivo borrado en Windows?
+    answer: Los pasajes no contienen esa información.
+  - lang: es
+    question: ¿Qué diferencia hay entre HTTP y HTTPS?
+    answer: No lo sé; la documentación no explica esos protocolos.
+  - lang: es
+    question: ¿Cómo creo una tabla dinámica en Excel?
+    answer: Los pasajes no tratan de Excel, así que no puedo responder eso.
+  - lang: es
+    question: ¿Qué lenguaje de programación debería aprender primero?
+    answer: No lo sé; el contexto no incluye recomendaciones de ese tipo.
+  - lang: es
+    question: ¿Cómo funciona Google Cloud Run?
+    answer: Los pasajes no describen Google Cloud Run, así que no lo sé.
+  - lang: es
+    question: ¿Qué es un puntero en C?
+    answer: No lo sé; la documentación no cubre el lenguaje C.
+  - lang: es
+    question: ¿Cómo hago una copia de seguridad de mi iPhone?
+    answer: Los pasajes no contienen esa información.
+  - lang: es
+    question: ¿Qué es la notación Big O?
+    answer: No lo sé; el contexto no explica la notación Big O.
+  - lang: es
+    question: ¿Cómo se configura un firewall en Linux con iptables?
+    answer: Los pasajes no cubren iptables, así que no puedo responder eso.
+  - lang: es
+    question: ¿Qué es mejor para el backend, Go o Java?
+    answer: No lo sé; la documentación no compara esos lenguajes.
+  - lang: es
+    question: ¿Cómo hago un merge en Git sin conflictos?
+    answer: Los pasajes no explican Git, así que no lo sé.
+  - lang: es
+    question: ¿Qué es un contenedor de Docker y en qué se diferencia de una máquina virtual?
+    answer: No lo sé; los pasajes no explican esa diferencia.
+
+  # --- Close to the project's vocabulary, but not documented ---
+  - lang: en
+    question: How does vLLM's throughput compare to Hugging Face TGI?
+    answer: I don't know; the passages only report vLLM's own measurements and don't mention TGI.
+  - lang: en
+    question: How do I deploy this platform on Google Kubernetes Engine?
+    answer: The passages only describe EKS, so I don't know how to deploy it on GKE.
+  - lang: en
+    question: How much does an H100 instance cost per hour on AWS?
+    answer: I don't know; the documentation only covers the g4dn.xlarge with a T4.
+  - lang: en
+    question: How do I train a 7B model from scratch?
+    answer: The passages don't cover training models from scratch, so I can't answer that.
+  - lang: en
+    question: Does the platform support Llama 3 70B on multiple GPUs?
+    answer: I don't know; the passages don't mention Llama 3 70B or multi-GPU serving.
+  - lang: en
+    question: What is the latency of the Anthropic API from Europe?
+    answer: The passages don't contain that information.
+  - lang: en
+    question: How do I configure Istio for this cluster?
+    answer: I don't know; the documentation doesn't mention Istio.
+  - lang: en
+    question: How many requests per second can Qdrant handle with a billion vectors?
+    answer: The passages don't give Qdrant benchmarks at that scale, so I don't know.
+  - lang: en
+    question: What's the best GPU for fine-tuning on a budget?
+    answer: I don't know; the documentation doesn't compare GPUs for fine-tuning.
+  - lang: en
+    question: How does Azure's AKS autoscaler compare to Karpenter?
+    answer: The passages don't mention AKS, so I can't compare them.
+  - lang: en
+    question: How do I monitor this platform with Datadog?
+    answer: I don't know; the passages don't mention Datadog.
+  - lang: en
+    question: What context length does GPT-4 support?
+    answer: The passages don't cover GPT-4, so I don't know.
+  - lang: en
+    question: How do I set up multi-region failover for the cluster?
+    answer: I don't know; the documentation doesn't describe a multi-region setup.
+  - lang: en
+    question: What does an EKS cluster cost per month with three m5.large nodes?
+    answer: The passages don't give that configuration's cost, so I can't answer that.
+  - lang: en
+    question: How does Ray Serve compare to vLLM for batching?
+    answer: I don't know; the passages don't mention Ray Serve.
+  - lang: es
+    question: ¿Cómo se compara vLLM con TensorRT-LLM en latencia?
+    answer: No lo sé; los pasajes solo miden vLLM y no mencionan TensorRT-LLM.
+  - lang: es
+    question: ¿Cómo despliego esta plataforma en Azure?
+    answer: Los pasajes solo describen el despliegue en EKS, así que no sé cómo hacerlo en Azure.
+  - lang: es
+    question: ¿Cuánto cuesta una GPU A100 en AWS por hora?
+    answer: No lo sé; la documentación solo cubre la g4dn.xlarge con una T4.
+  - lang: es
+    question: ¿Qué modelo de embeddings usa OpenAI en su API?
+    answer: Los pasajes no mencionan los modelos de OpenAI, así que no lo sé.
+  - lang: es
+    question: ¿Cómo configuro Kubeflow en este clúster?
+    answer: No lo sé; la documentación no menciona Kubeflow.
+  - lang: es
+    question: ¿Cuántos tokens por segundo da un Llama 3 8B en una A10G?
+    answer: Los pasajes no contienen mediciones de ese modelo ni de esa GPU.
+  - lang: es
+    question: ¿Cómo integro LangChain con esta plataforma?
+    answer: No lo sé; los pasajes no mencionan LangChain.
+  - lang: es
+    question: ¿Qué base de datos vectorial es más rápida, Pinecone o Weaviate?
+    answer: La documentación no compara Pinecone ni Weaviate, así que no lo sé.
+  - lang: es
+    question: ¿Cómo se configura un service mesh con Linkerd en EKS?
+    answer: No lo sé; los pasajes no cubren Linkerd.
+  - lang: es
+    question: ¿Cuánto cuesta Amazon Bedrock por millón de tokens con Claude?
+    answer: Los pasajes no mencionan precios de Bedrock, así que no puedo responder eso.
+  - lang: es
+    question: ¿Cómo se usa SageMaker para servir modelos?
+    answer: No lo sé; la documentación no trata SageMaker.
+  - lang: es
+    question: ¿Qué ventajas tiene usar Fargate en lugar de nodos EC2?
+    answer: Los pasajes no mencionan Fargate, así que no lo sé.
+  - lang: es
+    question: ¿Cómo hago backup de los volúmenes de Kubernetes con Velero?
+    answer: No lo sé; la documentación no menciona Velero.
+  - lang: es
+    question: ¿Qué rendimiento tiene Mixtral 8x7B en una T4?
+    answer: Los pasajes no contienen mediciones de Mixtral, así que no lo sé.
+  - lang: es
+    question: ¿Cómo configuro autenticación con Okta para Grafana?
+    answer: No lo sé; los pasajes no explican la integración con Okta.
