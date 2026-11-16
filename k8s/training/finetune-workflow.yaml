@@ -1,0 +1,129 @@
+# The fine-tuning pipeline (apps/finetune/), run by Argo Workflows:
+#
+#   train     LoRA on the dataset baked into the image; logs to MLflow and
+#             registers the adapter as a new version (alias candidate)
+#   evaluate  behavior check of that version vs the base model (language,
+#             refusals, citations) on the validation split, logged to the
+#             same MLflow run
+#
+# Nothing is promoted here: serving the adapter is a separate, gated step.
+# Submit it with a Workflow that references this template, e.g.
+# scripts/finetune-local.sh (CPU smoke test with a tiny model on kind).
+#
+# By default each step asks for the GPU (pod-spec-patch): Karpenter launches
+# a g4dn.xlarge for it as it does for vLLM, which therefore can't run at the
+# same time while the GPU quota allows one instance.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: finetune
+  namespace: training
+spec:
+  entrypoint: finetune
+  serviceAccountName: argo-workflow
+  arguments:
+    parameters:
+      - name: image
+        value: ghcr.io/yack300/llm-platform-finetune:0.1.0
+      - name: base-model
+        value: mistralai/Mistral-7B-Instruct-v0.2
+      # Extra flags for each step (python -m finetune.train / .evaluate).
+      - name: train-args
+        value: ""
+      - name: evaluate-args
+        value: ""
+      # Merged into each step's pod: the GPU, the GPU nodes' taint and
+      # memory for a 7B model. "{}" runs on CPU with the defaults below.
+      - name: pod-spec-patch
+        value: |
+          {"tolerations": [{"key": "nvidia.com/gpu", "operator": "Equal", "value": "present", "effect": "NoSchedule"}],
+           "containers": [{"name": "main", "resources": {
+             "requests": {"nvidia.com/gpu": "1", "cpu": "2", "memory": "10Gi"},
+             "limits": {"nvidia.com/gpu": "1", "cpu": "3", "memory": "14Gi"}}}]}
+  # Hugging Face cache, shared by both steps so the base model (~14 GB for
+  # Mistral-7B in fp16) is downloaded once per run. A literal size: the
+  # CRD's schema doesn't take a parameter here.
+  volumeClaimTemplates:
+    - metadata:
+        name: hf-cache
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 40Gi
+  # The cache volume (EBS on EKS) is deleted with the workflow's pods.
+  volumeClaimGC:
+    strategy: OnWorkflowCompletion
+  podGC:
+    strategy: OnPodSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  templates:
+    - name: finetune
+      steps:
+        - - name: train
+            template: train
+        - - name: evaluate
+            template: evaluate
+            arguments:
+              parameters:
+                - name: version
+                  value: "{{steps.train.outputs.parameters.version}}"
+
+    - name: train
+      podSpecPatch: "{{workflow.parameters.pod-spec-patch}}"
+      container:
+        image: "{{workflow.parameters.image}}"
+        command: [sh, -c]
+        args:
+          - >-
+            python -m finetune.train --base-model "{{workflow.parameters.base-model}}"
+            --version-file /tmp/outputs/version {{workflow.parameters.train-args}}
+        env: &env
+          - name: MLFLOW_TRACKING_URI
+            value: http://mlflow.training.svc.cluster.local:5000
+          - name: FINETUNE_VERSION
+            value: "{{workflow.parameters.image}}"
+        securityContext: &securityContext # required by the Kyverno policies
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+        resources: &resources
+          requests:
+            cpu: "1"
+            memory: 1Gi
+          limits:
+            cpu: "2"
+            memory: 3Gi
+        volumeMounts: &volumeMounts
+          - name: hf-cache
+            mountPath: /cache
+      outputs:
+        parameters:
+          - name: version
+            valueFrom:
+              path: /tmp/outputs/version
+
+    - name: evaluate
+      inputs:
+        parameters:
+          - name: version
+      podSpecPatch: "{{workflow.parameters.pod-spec-patch}}"
+      container:
+        image: "{{workflow.parameters.image}}"
+        command: [sh, -c]
+        args:
+          - >-
+            python -m finetune.evaluate --base-model "{{workflow.parameters.base-model}}"
+            --version "{{inputs.parameters.version}}" {{workflow.parameters.evaluate-args}}
+        env: *env
+        securityContext: *securityContext
+        resources: *resources
+        volumeMounts: *volumeMounts

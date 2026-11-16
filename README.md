@@ -95,7 +95,8 @@ llm-platform-on-eks/
 │   ├── main.tf                # EKS cluster (official module) + platform node group + Karpenter IAM/queue
 │   └── backend.hcl.example    # S3 backend template (copy to backend.hcl, gitignored)
 ├── apps/
-│   └── rag/                   # RAG service (Python): ingestion + /ask API, Dockerfile, unit tests
+│   ├── rag/                   # RAG service (Python): ingestion + /ask API, Dockerfile, unit tests
+│   └── finetune/              # LoRA fine-tuning: dataset generation, trainer, behavior evaluation
 ├── k8s/
 │   ├── vllm/                  # Deployment (GPU) + local-cpu-mock (Ollama) + Service + KEDA ScaledObject
 │   ├── litellm/                # Gateway: Deployment + ConfigMap (real vs. local) (routing/rate limits)
@@ -105,7 +106,8 @@ llm-platform-on-eks/
 │   ├── storage/                # Default gp3 StorageClass (EKS ships none)
 │   ├── karpenter/              # NodePools + EC2NodeClasses: GPU nodes from 0, platform overflow
 │   ├── security/                # Kyverno policies + Trivy-operator config
-│   └── observability/         # kube-prometheus-stack + Tempo values, ServiceMonitors (cost/latency)
+│   ├── observability/         # kube-prometheus-stack + Tempo values, ServiceMonitors (cost/latency)
+│   └── training/               # Argo Workflows values, fine-tuning WorkflowTemplate, MLflow
 ├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform,
 │                               # RAG image (tests, build, retrieval eval, Trivy, push + keyless cosign signing on main)
 ├── docs/
@@ -114,6 +116,7 @@ llm-platform-on-eks/
 │   └── tracing.md              # One trace per RAG question (Tempo): where the time goes
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
+    ├── finetune-local.sh       # Fine-tuning pipeline smoke test on kind (CPU, tiny model)
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
     └── teardown-eks.sh         # EKS: delete apps and PVC volumes before terraform destroy
 ```

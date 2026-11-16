@@ -69,6 +69,12 @@ docker run --rm -v "$PWD/apps/rag/eval":/eval:ro llm-platform-rag:dev python -m 
 # ANSWERS=/eval/judge/calibration.json checks the judge itself against known verdicts.
 docker run --rm -v "$PWD/apps/rag/eval":/eval -w /eval/judge -e ANSWERS=/eval/answers/<date>.json -e ANTHROPIC_API_KEY -e HOME=/tmp -e PROMPTFOO_DISABLE_TELEMETRY=1 --entrypoint promptfoo ghcr.io/promptfoo/promptfoo:0.125.1 eval --no-cache -o /eval/judge/results.json
 python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json
+# Fine-tuning: unit tests run inside the CPU image (they need torch); the
+# pipeline smoke test runs Argo Workflows + MLflow + a tiny model on its own
+# kind cluster (llm-finetune-local)
+docker build -f apps/finetune/Dockerfile -t llm-platform-finetune:dev .
+docker run --rm --user 0 -v "$PWD/apps/finetune":/src -w /src llm-platform-finetune:dev sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider tests'
+./scripts/finetune-local.sh
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
@@ -267,6 +273,22 @@ under `rag.generate` because the API injects a `traceparent` into the model call
 `deploy-local.sh` strips it). LiteLLM's spans include the full prompt. The Tempo
 chart lives in grafana-community/helm-charts (deprecated in grafana/helm-charts). Measured results:
 docs/tracing.md.
+
+**Fine-tuning (`apps/finetune/`, `k8s/training/`), local only so far.** A
+LoRA adapter for the served Mistral-7B that teaches behavior, not facts:
+answer in the question's language, decline when the context lacks the
+answer, cite. `data/generate.py` builds the dataset from real retrievals
+(runs in the RAG image; seeds exclude chunks holding evaluation evidence or
+questions); the dataset is committed and baked into the trainer image.
+`finetune.train` (QLoRA on GPU, fp32 on CPU) logs to MLflow and registers
+each adapter as a version of `rag-behavior-lora` with alias `candidate`;
+`finetune.evaluate` scores base vs adapter with the heuristics in
+`finetune/behavior.py` (no API). Argo Workflows runs both from the
+`finetune` WorkflowTemplate, whose default `pod-spec-patch` asks for the GPU.
+MLflow needs `--allowed-hosts` (it rejects unknown Host headers) and
+`MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false` (2.4 GiB to ~370 MiB). Not yet on
+EKS: no Argo CD apps, no GPU image published, and the Kyverno policies don't
+cover the `training` namespace yet.
 
 ## Repo-wide conventions
 

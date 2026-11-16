@@ -1,0 +1,111 @@
+# MLflow tracking server and model registry for the fine-tuning pipeline
+# (apps/finetune/). Training runs log parameters, losses and the LoRA
+# adapter here, and register each adapter as a version of
+# rag-behavior-lora; the `candidate` / `champion` aliases decide what gets
+# served.
+#
+# Clients only talk HTTP to the server, which proxies artifacts
+# (--serve-artifacts), so training pods need no storage credentials.
+# Metadata lives in SQLite on this volume; artifacts in
+# MLFLOW_ARTIFACTS_DESTINATION (the same volume locally).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow
+  namespace: training
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: training
+  labels:
+    app: mlflow
+spec:
+  replicas: 1
+  # One pod owns the ReadWriteOnce volume (and SQLite takes one writer).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mlflow
+          image: ghcr.io/mlflow/mlflow:v3.18.0
+          command: ["mlflow", "server"]
+          args:
+            - --host=0.0.0.0
+            - --port=5000
+            - --workers=1
+            - --backend-store-uri=sqlite:////mlflow/mlflow.db
+            - --serve-artifacts
+            - --artifacts-destination=$(MLFLOW_ARTIFACTS_DESTINATION)
+            # MLflow 3 rejects unknown Host headers (DNS rebinding): the
+            # Service's names, and localhost for kubectl port-forward.
+            - --allowed-hosts=mlflow:5000,mlflow.training:5000,mlflow.training.svc:5000,mlflow.training.svc.cluster.local:5000,localhost:5000,127.0.0.1:5000
+          env:
+            - name: MLFLOW_ARTIFACTS_DESTINATION
+              value: /mlflow/artifacts
+            # The background job runner (GenAI scoring, trace archival)
+            # starts a dozen worker processes: 2.4 GiB vs ~370 MiB without
+            # it, measured. Nothing here uses it.
+            - name: MLFLOW_SERVER_ENABLE_JOB_EXECUTION
+              value: "false"
+            - name: HOME
+              value: /tmp
+          ports:
+            - containerPort: 5000
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          volumeMounts:
+            - name: data
+              mountPath: /mlflow
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mlflow
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: training
+spec:
+  selector:
+    app: mlflow
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http

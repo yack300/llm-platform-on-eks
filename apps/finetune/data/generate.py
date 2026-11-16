@@ -37,7 +37,6 @@ import concurrent.futures
 import json
 import os
 import random
-import re
 import sys
 import threading
 import time
@@ -46,6 +45,11 @@ from pathlib import Path
 import httpx
 import numpy as np
 import yaml
+
+# finetune.behavior's language check, shared with the evaluation (this
+# script runs in the RAG image with apps/finetune mounted at /finetune).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from finetune.behavior import detected_language  # noqa: E402
 
 from rag import embeddings
 from rag.chunking import Chunk
@@ -169,20 +173,6 @@ def seed_chunks(chunks: list[Chunk], questions: list[dict], min_chars: int) -> l
     banned += [norm(q["question"]) for q in questions]
     return [c for c in chunks if len(c.text) >= min_chars
             and not any(b in norm(c.text) for b in banned)]
-
-
-STOPWORDS = {
-    "en": {"the", "is", "are", "and", "of", "to", "it", "with", "for", "that", "which", "this", "because"},
-    "es": {"el", "la", "los", "las", "es", "son", "y", "de", "que", "con", "para", "por", "porque", "una"},
-}
-
-
-def detected_language(text: str) -> str:
-    """en or es, by stopwords outside code spans: enough to catch an answer
-    in the wrong one of two languages."""
-    words = re.findall(r"[a-záéíóúñü]+", re.sub(r"`[^`]*`", " ", text.lower()))
-    en, es = (sum(w in STOPWORDS[lang] for w in words) for lang in ("en", "es"))
-    return "es" if es > en else "en"
 
 
 def eval_similarity(texts: list[str], eval_texts: list[str]) -> list[float]:

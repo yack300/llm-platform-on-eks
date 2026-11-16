@@ -1,0 +1,2 @@
+# Unit tests, run inside the image (it has torch and the rest).
+pytest==9.2.0

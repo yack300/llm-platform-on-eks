@@ -39,6 +39,7 @@ env:
   # serve (no referrers API). v2 writes the classic .sig tag.
   COSIGN_IMAGE: ghcr.io/sigstore/cosign/cosign:v2.6.5
   RAG_IMAGE: ghcr.io/yack300/llm-platform-rag
+  FINETUNE_IMAGE: ghcr.io/yack300/llm-platform-finetune
 
 jobs:
   # --- DevSecOps: shift-left scans ---
@@ -205,3 +206,33 @@ jobs:
             -e ACTIONS_ID_TOKEN_REQUEST_URL -e ACTIONS_ID_TOKEN_REQUEST_TOKEN \
             "$COSIGN_IMAGE" sign --yes "$digest"
           echo "::notice::Published and signed $digest"
+
+  # LoRA fine-tuning image (apps/finetune/), CPU variant: the one the local
+  # smoke test runs (scripts/finetune-local.sh). Built and scanned, not
+  # published yet.
+  finetune-image:
+    needs: [checkov, trivy-fs, gitleaks]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build
+        run: docker build -f apps/finetune/Dockerfile -t "$FINETUNE_IMAGE:$(cat apps/finetune/VERSION)-cpu" .
+
+      # In the image: the tests need torch and the dataset's format.
+      - name: Unit tests
+        run: >-
+          docker run --rm --user 0 -v "$PWD/apps/finetune":/src -w /src
+          "$FINETUNE_IMAGE:$(cat apps/finetune/VERSION)-cpu"
+          sh -c 'pip install -q --root-user-action=ignore -r requirements-dev.txt
+          && python -m pytest -q -p no:cacheprovider tests'
+
+      # Also the only scan of its Python dependencies: trivy-fs reads files
+      # named requirements.txt, not this image's requirements-cpu.txt lock.
+      - name: Scan the image
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE"
+          image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1
+          "$FINETUNE_IMAGE:$(cat apps/finetune/VERSION)-cpu"

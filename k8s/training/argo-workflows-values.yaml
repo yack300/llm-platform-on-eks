@@ -1,0 +1,58 @@
+# Argo Workflows (argo/argo-workflows chart): runs the fine-tuning pipeline
+# in k8s/training/finetune-workflow.yaml. Only the training namespace runs
+# workflows.
+images:
+  # The chart defaults to Always; IfNotPresent also lets kind run an image
+  # loaded with `kind load` (the local smoke test).
+  pullPolicy: IfNotPresent
+
+controller:
+  workflowNamespaces:
+    - training
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# The service account workflow pods run as, with the RBAC the executor
+# needs, created in each namespace above.
+workflow:
+  serviceAccount:
+    create: true
+    name: argo-workflow
+  rbac:
+    create: true
+
+# Argo's own init/wait containers in every workflow pod: limits and no
+# privilege escalation, like any container the Kyverno policies check.
+executor:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 500m
+      memory: 128Mi
+  securityContext:
+    allowPrivilegeEscalation: false
+    privileged: false
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+
+server:
+  # The UI, reached with kubectl port-forward only (no Service exposed
+  # outside the cluster), so it uses its own service account instead of
+  # asking for a token.
+  authModes:
+    - server
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

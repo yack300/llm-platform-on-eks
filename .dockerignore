@@ -1,9 +1,13 @@
-# Only apps/rag/Dockerfile builds from the repo root: send it the app and the
-# docs it indexes, nothing else (no Terraform state, no .git).
+# Both images build from the repo root: send them their app, and the RAG
+# image the docs it indexes, nothing else (no Terraform state, no .git).
 *
 !apps/rag/
 !README.md
 !CLAUDE.md
 !docs/
+!apps/finetune/finetune/
+!apps/finetune/requirements-*.txt
+!apps/finetune/VERSION
+!apps/finetune/data/dataset/*.jsonl
 apps/rag/tests/
 **/__pycache__/
