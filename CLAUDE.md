@@ -276,7 +276,7 @@ under `rag.generate` because the API injects a `traceparent` into the model call
 chart lives in grafana-community/helm-charts (deprecated in grafana/helm-charts). Measured results:
 docs/tracing.md.
 
-**Fine-tuning (`apps/finetune/`, `k8s/training/`), not yet run on EKS.** A
+**Fine-tuning (`apps/finetune/`, `k8s/training/`).** A
 LoRA adapter for the served Mistral-7B that teaches behavior, not facts:
 answer in the question's language, decline when the context lacks the
 answer, cite. `data/generate.py` builds the dataset from real retrievals
@@ -299,6 +299,10 @@ CUDA 13 like the vLLM image, checked for the T4's sm_75) only when
 `apps/finetune/VERSION` is new; `push-and-sign.sh` publishes and signs all
 three images. The Kyverno policies cover `training` too, so workflow pods
 need Argo's executor limits and securityContext from the chart's values.
+Argo Workflows' full CRDs (~5 MB each) pushed Argo CD's application
+controller past 1 GiB into an OOMKill loop: keep its 2 GiB limit. MLflow's
+registry is lost at teardown: export results first (`apps/finetune/results/`).
+Measured results: docs/fine-tuning.md.
 
 ## Repo-wide conventions
 

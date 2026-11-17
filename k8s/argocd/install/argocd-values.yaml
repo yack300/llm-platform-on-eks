@@ -48,12 +48,15 @@ configs:
       enableOCI: "true"
 
 controller:
+  # It caches every resource it manages, CRD schemas included: Argo
+  # Workflows' full CRDs are ~5 MB each (~20 MB for four), which took it
+  # past 1Gi into an OOMKill loop on the eighth EKS run.
   resources:
     requests:
       cpu: 250m
-      memory: 512Mi
+      memory: 768Mi
     limits:
-      memory: 1Gi
+      memory: 2Gi
 
 repoServer:
   resources:

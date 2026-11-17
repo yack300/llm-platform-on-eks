@@ -45,6 +45,11 @@ through the LiteLLM gateway. Full numbers, method and caveats in
   model and the RAG service plus the gateway add under 200 ms; during a cold
   start, ~75% of a fallback answer is LiteLLM retrying the scaled-to-zero
   backend. Details in [docs/tracing.md](docs/tracing.md).
+- **A LoRA adapter fixes the language, not the facts** (fine-tuning on the
+  platform: Argo Workflows, MLflow, QLoRA on one T4 in 29 min): Spanish
+  questions answered in Spanish went from 0/14 to 14/14, refusals got
+  concise, but answers aren't more faithful, so it isn't served until the
+  judge says so. Details in [docs/fine-tuning.md](docs/fine-tuning.md).
 - **Same GPU, ~6.8x the throughput** going from 1 to 8 concurrent requests,
   with p50 latency only going from 2.5 s to 3 s (vLLM continuous batching).
 - **Bugs that only showed up on real infrastructure**, fixed in this repo:
@@ -113,7 +118,8 @@ llm-platform-on-eks/
 ├── docs/
 │   ├── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
 │   ├── retrieval-eval.md       # RAG retrieval metrics + CI baseline, answer quality judged by Claude
-│   └── tracing.md              # One trace per RAG question (Tempo): where the time goes
+│   ├── tracing.md              # One trace per RAG question (Tempo): where the time goes
+│   └── fine-tuning.md          # Behavior LoRA: pipeline, first run, what it fixed and what it didn't
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
     ├── finetune-local.sh       # Fine-tuning pipeline smoke test on kind (CPU, tiny model)
