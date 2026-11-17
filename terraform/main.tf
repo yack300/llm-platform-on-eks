@@ -164,6 +164,40 @@ module "ebs_csi_pod_identity" {
   attach_aws_ebs_csi_policy = true
 }
 
+# MLflow (k8s/training/mlflow.yaml) proxies the fine-tuning artifacts to the
+# artifacts bucket from terraform/bootstrap, which outlives the cluster.
+# Only its service account gets the role, and only under mlflow/. Skipped
+# unless the bucket name is passed (-var artifacts_bucket_name=...).
+module "mlflow_pod_identity" {
+  #checkov:skip=CKV_TF_1:Terraform Registry module pinned by version constraint and .terraform.lock.hcl, not a git source
+  source  = "terraform-aws-modules/eks-pod-identity/aws"
+  version = "~> 2.9"
+  count   = var.artifacts_bucket_name == null ? 0 : 1
+
+  name                 = "${var.cluster_name}-mlflow"
+  attach_custom_policy = true
+  policy_statements = [
+    {
+      sid       = "ListArtifacts"
+      actions   = ["s3:ListBucket"]
+      resources = ["arn:aws:s3:::${var.artifacts_bucket_name}"]
+    },
+    {
+      sid       = "ReadWriteMlflowArtifacts"
+      actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+      resources = ["arn:aws:s3:::${var.artifacts_bucket_name}/mlflow/*"]
+    },
+  ]
+
+  associations = {
+    mlflow = {
+      cluster_name    = module.eks.cluster_name
+      namespace       = "training"
+      service_account = "mlflow"
+    }
+  }
+}
+
 # --------------------------------------------------------------------------
 # Karpenter: everything AWS-side it needs. The controller itself, its
 # NodePools and EC2NodeClasses are deployed by Argo CD (k8s/argocd/apps/

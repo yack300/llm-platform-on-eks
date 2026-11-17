@@ -1,0 +1,35 @@
+# Argo Workflows: runs the fine-tuning pipeline (k8s/training/). Wave 0,
+# with the other operators: its CRDs (WorkflowTemplate) must exist before
+# the training app (wave 1) syncs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-workflows
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-workflows
+      targetRevision: 2.0.18
+      helm:
+        releaseName: argo-workflows
+        valueFiles:
+          - $values/k8s/training/argo-workflows-values.yaml
+    - repoURL: https://github.com/yack300/llm-platform-on-eks.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # CRDs too large for client-side apply annotations

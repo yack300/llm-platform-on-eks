@@ -1,0 +1,30 @@
+# Fine-tuning pipeline (k8s/training/): MLflow and the Argo Workflows
+# template. Wave 1: needs Argo Workflows' CRDs (wave 0). Workflows are
+# submitted on demand, not synced from Git. The mlflow-storage ConfigMap
+# (the artifacts bucket) comes from scripts/bootstrap-argocd.sh.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: training
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: training
+  source:
+    repoURL: https://github.com/yack300/llm-platform-on-eks.git
+    targetRevision: main
+    path: k8s/training
+    directory:
+      include: "{mlflow.yaml,finetune-workflow.yaml}"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

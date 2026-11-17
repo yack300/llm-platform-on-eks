@@ -42,6 +42,8 @@ echo "==> Deleting PVCs left behind by StatefulSets..."
 # on the first EKS run.
 kubectl delete pvc --all -n llm-platform --ignore-not-found --timeout=5m
 kubectl delete pvc --all -n monitoring --ignore-not-found --timeout=5m
+# A fine-tuning workflow still running at teardown keeps its cache volume.
+kubectl delete pvc --all -n training --ignore-not-found --timeout=5m
 
 echo "==> Waiting for PersistentVolumes to be released..."
 for _ in $(seq 1 60); do

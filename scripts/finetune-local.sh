@@ -16,6 +16,7 @@ cd "$(dirname "$0")"
 CLUSTER_NAME="llm-finetune-local"
 ARGO_WORKFLOWS_CHART_VERSION="2.0.18"
 IMAGE="llm-platform-finetune:dev"
+MLFLOW_IMAGE="llm-platform-mlflow:dev"
 
 echo "==> Creating kind cluster (if it doesn't exist)..."
 if ! kind get clusters | grep -qx "$CLUSTER_NAME"; then
@@ -31,12 +32,18 @@ helm upgrade --install argo-workflows argo-workflows \
   --repo https://argoproj.github.io/argo-helm --version "$ARGO_WORKFLOWS_CHART_VERSION" \
   --namespace argo --create-namespace -f ../k8s/training/argo-workflows-values.yaml --wait
 
-echo "==> Building the trainer image (CPU) and loading it into kind..."
+echo "==> Building the trainer (CPU) and MLflow images and loading them into kind..."
 docker build -f ../apps/finetune/Dockerfile -t "$IMAGE" ..
-kind load docker-image "$IMAGE" --name "$CLUSTER_NAME"
+docker build -f ../apps/mlflow/Dockerfile -t "$MLFLOW_IMAGE" ..
+kind load docker-image "$IMAGE" "$MLFLOW_IMAGE" --name "$CLUSTER_NAME"
 
 echo "==> Applying MLflow and the workflow template..."
-kubectl apply -f ../k8s/training/mlflow.yaml -f ../k8s/training/finetune-workflow.yaml
+# Artifacts on MLflow's own volume: there's no S3 here.
+kubectl -n training create configmap mlflow-storage \
+  --from-literal=artifacts-destination=/mlflow/artifacts --dry-run=client -o yaml | kubectl apply -f -
+sed "s#ghcr.io/yack300/llm-platform-mlflow:[^[:space:]]*#$MLFLOW_IMAGE#" ../k8s/training/mlflow.yaml \
+  | kubectl apply -f -
+kubectl apply -f ../k8s/training/finetune-workflow.yaml
 kubectl -n training rollout status deployment/mlflow --timeout=5m
 
 echo "==> Submitting the workflow (tiny model, a few steps, CPU)..."

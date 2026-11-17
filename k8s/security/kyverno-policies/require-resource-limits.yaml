@@ -22,8 +22,9 @@ spec:
                 - Pod
               namespaces:
                 - llm-platform
+                - training
       validate:
-        message: "All containers in llm-platform must define CPU/memory requests and limits."
+        message: "All containers in llm-platform and training must define CPU/memory requests and limits."
         pattern:
           spec:
             containers:

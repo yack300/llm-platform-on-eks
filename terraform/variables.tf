@@ -43,3 +43,9 @@ variable "admin_cidrs" {
   description = "CIDRs allowed to reach the public EKS API endpoint, e.g. [\"<your-ip>/32\"] (curl -s https://checkip.amazonaws.com). No default on purpose: never open the API to 0.0.0.0/0 by accident."
   type        = list(string)
 }
+
+variable "artifacts_bucket_name" {
+  description = "The artifacts bucket from terraform/bootstrap (its artifacts_bucket_name output), for MLflow's Pod Identity. Null (default) skips it: no fine-tuning pipeline."
+  type        = string
+  default     = null
+}

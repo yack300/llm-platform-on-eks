@@ -128,7 +128,7 @@ llm-platform-on-eks/
    test the gateway, RAG, and security policies without spending on GPU.
 2. Once the logic works locally:
    a. `cd terraform/bootstrap && terraform init && terraform apply` — creates the S3
-      bucket for remote state (done once).
+      buckets for remote state and for model artifacts that outlive the cluster (done once).
    b. Copy the `backend_hcl` output to `terraform/backend.hcl` (see `backend.hcl.example`).
    c. `cd terraform && terraform init -backend-config=backend.hcl && terraform apply
       -var='admin_cidrs=["<your-ip>/32"]'` against real AWS, to create the EKS cluster, the

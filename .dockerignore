@@ -1,4 +1,4 @@
-# Both images build from the repo root: send them their app, and the RAG
+# The images build from the repo root: send them their app, and the RAG
 # image the docs it indexes, nothing else (no Terraform state, no .git).
 *
 !apps/rag/
@@ -9,5 +9,6 @@
 !apps/finetune/requirements-*.txt
 !apps/finetune/VERSION
 !apps/finetune/data/dataset/*.jsonl
+!apps/mlflow/
 apps/rag/tests/
 **/__pycache__/

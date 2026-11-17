@@ -1,0 +1,5 @@
+# The GPU variant: everything in requirements.in, torch from PyPI (built for
+# CUDA 13, like the vLLM image the GPU nodes already run), and bitsandbytes
+# for 4-bit QLoRA.
+-r requirements.in
+bitsandbytes==0.50.2

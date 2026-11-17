@@ -6,8 +6,18 @@
 #
 # Clients only talk HTTP to the server, which proxies artifacts
 # (--serve-artifacts), so training pods need no storage credentials.
-# Metadata lives in SQLite on this volume; artifacts in
-# MLFLOW_ARTIFACTS_DESTINATION (the same volume locally).
+# Artifacts go where the mlflow-storage ConfigMap says: the artifacts S3
+# bucket on EKS (scripts/bootstrap-argocd.sh creates it; the server's
+# service account gets S3 access through Pod Identity), this volume on kind
+# (scripts/finetune-local.sh). Run metadata lives in SQLite on this volume,
+# so it's per cluster: a new EKS session starts an empty registry, while
+# adapters stay in S3.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mlflow
+  namespace: training
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -39,6 +49,7 @@ spec:
       labels:
         app: mlflow
     spec:
+      serviceAccountName: mlflow # bound to the S3 role by Pod Identity (terraform/main.tf)
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -47,7 +58,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:v3.18.0
+          # The official image plus boto3 (apps/mlflow/), signed by CI; the
+          # tag must match apps/mlflow/VERSION (checked in CI).
+          image: ghcr.io/yack300/llm-platform-mlflow:3.18.0-1
           command: ["mlflow", "server"]
           args:
             - --host=0.0.0.0
@@ -61,7 +74,10 @@ spec:
             - --allowed-hosts=mlflow:5000,mlflow.training:5000,mlflow.training.svc:5000,mlflow.training.svc.cluster.local:5000,localhost:5000,127.0.0.1:5000
           env:
             - name: MLFLOW_ARTIFACTS_DESTINATION
-              value: /mlflow/artifacts
+              valueFrom:
+                configMapKeyRef:
+                  name: mlflow-storage
+                  key: artifacts-destination
             # The background job runner (GenAI scoring, trace archival)
             # starts a dozen worker processes: 2.4 GiB vs ~370 MiB without
             # it, measured. Nothing here uses it.

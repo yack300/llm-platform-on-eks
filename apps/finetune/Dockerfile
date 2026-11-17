@@ -9,6 +9,14 @@
 #   docker run --rm -v "$PWD/apps/finetune":/w -w /w python:3.12.16-slim sh -c \
 #     'pip install -q --extra-index-url https://download.pytorch.org/whl/cpu \
 #      -r requirements.in && pip freeze > requirements-cpu.txt'
+# requirements-cuda.txt is resolved for linux x86_64 without installing (the
+# CUDA wheels are ~3 GB): pip install --dry-run --report with
+# --platform manylinux_2_<5..40>_x86_64 --python-version 3.12
+# --only-binary=:all: -r requirements-cuda.in, then the report's name==version.
+#
+# GPU variant (CI publishes it from main):
+#   docker build -f apps/finetune/Dockerfile --build-arg LOCK=requirements-cuda.txt \
+#     --build-arg TORCH_INDEX=https://pypi.org/simple -t llm-platform-finetune:gpu .
 
 # Same base as the RAG image, pinned by digest.
 ARG PYTHON=python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b

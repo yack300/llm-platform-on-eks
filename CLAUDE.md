@@ -32,6 +32,8 @@ cd terraform/bootstrap && terraform init && terraform apply
 
 # Main infra (EKS cluster, platform node group, Karpenter IAM/queue) — real AWS, real cost
 cd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=["<ip>/32"]'
+# (add -var="artifacts_bucket_name=$(terraform -chdir=bootstrap output -raw artifacts_bucket_name)"
+# for the fine-tuning pipeline: MLflow's Pod Identity to the bootstrap's artifacts bucket)
 
 # Optional, experimental: EBS snapshot with the vLLM image pre-pulled for the GPU nodes'
 # data volume. Build it any time; point the gpu EC2NodeClass at it (or back to `off`)
@@ -57,7 +59,7 @@ docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1 git /repo --redact 
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/yannh/kubeconform:v0.8.0 -summary -strict -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/4c8dc296d32b06d15ccde9668ff136c951f4d539/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -ignore-filename-pattern 'values(-local)?\.yaml$' -kubernetes-version 1.36.0 k8s/
 # kyverno: one -r per workload file (see the workflow's kyverno job for why), without
 # require-image-signature, e.g.
-docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/disallow-latest-tag.yaml k8s/security/kyverno-policies/disallow-privileged-containers.yaml k8s/security/kyverno-policies/require-resource-limits.yaml k8s/security/kyverno-policies/restrict-host-network.yaml -r k8s/vllm/deployment.yaml -r k8s/vllm/local-cpu-mock-deployment.yaml -r k8s/litellm/deployment.yaml -r k8s/rag/api.yaml -r k8s/rag/ingest-job.yaml
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 apply k8s/security/kyverno-policies/disallow-latest-tag.yaml k8s/security/kyverno-policies/disallow-privileged-containers.yaml k8s/security/kyverno-policies/require-resource-limits.yaml k8s/security/kyverno-policies/restrict-host-network.yaml -r k8s/vllm/deployment.yaml -r k8s/vllm/local-cpu-mock-deployment.yaml -r k8s/litellm/deployment.yaml -r k8s/rag/api.yaml -r k8s/rag/ingest-job.yaml -r k8s/training/mlflow.yaml
 # RAG unit tests (no model or Qdrant needed) and image build (from the repo root)
 docker run --rm -v "$PWD/apps/rag":/app -w /app python:3.12.16-slim sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q tests'
 docker build -f apps/rag/Dockerfile -t llm-platform-rag:dev .
@@ -274,7 +276,7 @@ under `rag.generate` because the API injects a `traceparent` into the model call
 chart lives in grafana-community/helm-charts (deprecated in grafana/helm-charts). Measured results:
 docs/tracing.md.
 
-**Fine-tuning (`apps/finetune/`, `k8s/training/`), local only so far.** A
+**Fine-tuning (`apps/finetune/`, `k8s/training/`), not yet run on EKS.** A
 LoRA adapter for the served Mistral-7B that teaches behavior, not facts:
 answer in the question's language, decline when the context lacks the
 answer, cite. `data/generate.py` builds the dataset from real retrievals
@@ -286,9 +288,17 @@ each adapter as a version of `rag-behavior-lora` with alias `candidate`;
 `finetune/behavior.py` (no API). Argo Workflows runs both from the
 `finetune` WorkflowTemplate, whose default `pod-spec-patch` asks for the GPU.
 MLflow needs `--allowed-hosts` (it rejects unknown Host headers) and
-`MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false` (2.4 GiB to ~370 MiB). Not yet on
-EKS: no Argo CD apps, no GPU image published, and the Kyverno policies don't
-cover the `training` namespace yet.
+`MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false` (2.4 GiB to ~370 MiB), and runs
+its own image (`apps/mlflow/`: the official one lacks boto3). On EKS
+(Argo CD apps `argo-workflows`, wave 0, and `training`, wave 1) it proxies
+artifacts to the artifacts bucket in `terraform/bootstrap`, which outlives
+the cluster, through Pod Identity; the bucket's name reaches it in the
+`mlflow-storage` ConfigMap that `bootstrap-argocd.sh` creates. Its SQLite
+registry is per cluster. CI publishes the trainer's GPU variant (~10 GB,
+CUDA 13 like the vLLM image, checked for the T4's sm_75) only when
+`apps/finetune/VERSION` is new; `push-and-sign.sh` publishes and signs all
+three images. The Kyverno policies cover `training` too, so workflow pods
+need Argo's executor limits and securityContext from the chart's values.
 
 ## Repo-wide conventions
 

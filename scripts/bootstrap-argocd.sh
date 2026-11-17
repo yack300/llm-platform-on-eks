@@ -52,6 +52,22 @@ else
   echo "    Secret grafana-admin already exists, skipping creation."
 fi
 
+echo "==> Pointing MLflow at the artifacts bucket..."
+# k8s/training/mlflow.yaml reads its artifact store from this ConfigMap: the
+# bucket name (from terraform/bootstrap) is per account, so it isn't in Git.
+# MLflow reaches it through Pod Identity (terraform apply with
+# -var artifacts_bucket_name=...).
+ARTIFACTS_BUCKET="${ARTIFACTS_BUCKET:-$(terraform -chdir=../terraform/bootstrap output -raw artifacts_bucket_name 2>/dev/null || true)}"
+kubectl create namespace training --dry-run=client -o yaml | kubectl apply -f -
+if [ -n "$ARTIFACTS_BUCKET" ]; then
+  kubectl -n training create configmap mlflow-storage \
+    --from-literal=artifacts-destination="s3://${ARTIFACTS_BUCKET}/mlflow" \
+    --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "    No artifacts bucket (apply terraform/bootstrap, or set ARTIFACTS_BUCKET):"
+  echo "    MLflow won't start until the mlflow-storage ConfigMap exists."
+fi
+
 echo "==> Applying the root Application (app of apps)..."
 kubectl apply -f ../k8s/argocd/root.yaml
 

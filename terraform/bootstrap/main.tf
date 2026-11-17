@@ -97,3 +97,66 @@ resource "aws_s3_bucket_public_access_block" "tfstate" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+# --------------------------------------------------------------------------
+# Artifacts bucket: what has to outlive the EKS cluster, which is created
+# and destroyed for every session. MLflow (k8s/training/) writes the LoRA
+# adapters it registers here, under mlflow/, and vLLM loads the promoted
+# one from here at startup. Here rather than in terraform/ so `terraform
+# destroy` of the cluster keeps it; the cluster gets access through EKS Pod
+# Identity (terraform/main.tf). Adapters are ~100-200 MB each: cents a
+# month.
+# --------------------------------------------------------------------------
+resource "aws_s3_bucket" "artifacts" {
+  #checkov:skip=CKV_AWS_18:Access logging needs a second bucket; not worth it for a demo's model artifacts
+  #checkov:skip=CKV_AWS_144:Cross-region replication doubles storage cost; adapters can be retrained
+  #checkov:skip=CKV_AWS_145:SSE-S3 (AES256) instead of KMS to avoid per-key monthly cost
+  #checkov:skip=CKV2_AWS_62:No consumer for S3 event notifications on the artifacts bucket
+  bucket = coalesce(var.artifacts_bucket_name, "${var.state_bucket_name}-artifacts")
+}
+
+# Artifacts are written once per run and never overwritten; versioning only
+# guards against an accidental delete, for 30 days.
+resource "aws_s3_bucket_versioning" "artifacts" {
+  bucket = aws_s3_bucket.artifacts.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
+  bucket = aws_s3_bucket.artifacts.id
+
+  rule {
+    id     = "expire-noncurrent-artifacts"
+    status = "Enabled"
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.artifacts]
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
+  bucket = aws_s3_bucket.artifacts.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "artifacts" {
+  bucket                  = aws_s3_bucket.artifacts.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}

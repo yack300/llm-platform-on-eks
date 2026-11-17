@@ -20,6 +20,7 @@ spec:
                 - Pod
               namespaces:
                 - llm-platform
+                - training
       validate:
         message: "An image tag is required (no implicit :latest)."
         foreach:
@@ -40,6 +41,7 @@ spec:
                 - Pod
               namespaces:
                 - llm-platform
+                - training
       validate:
         message: "Using ':latest' is not allowed, pin an explicit version tag or digest."
         pattern:

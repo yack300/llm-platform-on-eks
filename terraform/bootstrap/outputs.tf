@@ -12,3 +12,8 @@ output "backend_hcl" {
     encrypt      = true
   EOT
 }
+
+output "artifacts_bucket_name" {
+  description = "Pass to terraform/ as -var artifacts_bucket_name=... (Pod Identity for MLflow)"
+  value       = aws_s3_bucket.artifacts.id
+}
