@@ -332,6 +332,32 @@ of GPU):
 About $0.15 of it was ~16 minutes of cluster time lost to a broken wait loop
 in a helper script (Qwen was actually ready in ~4 minutes).
 
+## Eighth run (2026-11-17): fine-tuning a LoRA adapter
+
+The fine-tuning workflow trained and evaluated a LoRA adapter of Mistral-7B
+on a GPU node Karpenter launched for it; results in
+[fine-tuning.md](fine-tuning.md#eighth-eks-run-2026-11-17-the-first-adapter).
+The GPU node came up on-demand (no spot capacity).
+
+What this run cost (Cost Explorer; ~1 h 55 min of cluster time, ~20 minutes
+of it stalled by Argo CD's crash loop before anything ran; ~55 minutes of
+GPU: the 48-minute workflow plus Karpenter's 5 minutes before removing the
+empty node):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU node) | $0.55 |
+| KMS (includes a key not created by this project) | $0.19 |
+| EC2 other (EBS volumes, data transfer) | $0.18 |
+| EKS control plane | $0.17 |
+| VPC (public IPv4 addresses) | $0.03 |
+| S3 (Terraform state, artifacts) | < $0.01 |
+| **Total before tax** | **$1.11** |
+
+Training itself, 29 minutes of an on-demand g4dn.xlarge at $0.526/h, is
+about $0.25 of that; the rest is the platform around it. The adapter stays
+in the artifacts bucket for cents a month.
+
 ## Total cost of all EKS runs
 
 What every EKS session cost, from Cost Explorer, before tax:
@@ -344,7 +370,9 @@ What every EKS session cost, from Cost Explorer, before tax:
 | Fourth | 2026-10-20 | RAG service with signed images | $1.07 |
 | Fifth | 2026-10-26 | Judging RAG answers | $0.90 |
 | Sixth | 2026-11-02 | Mistral-7B vs Qwen2.5-7B | $0.76 |
-| **All six runs** | | | **$7.78** |
+| Seventh | 2026-11-08 | Tracing with Tempo | not yet reported |
+| Eighth | 2026-11-17 | Fine-tuning a LoRA adapter | $1.11 |
+| **Seven runs with a reported cost** | | | **$8.89** |
 
 ## What the whole session cost
 
