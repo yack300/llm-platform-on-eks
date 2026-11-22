@@ -32,8 +32,9 @@ cd terraform/bootstrap && terraform init && terraform apply
 
 # Main infra (EKS cluster, platform node group, Karpenter IAM/queue) — real AWS, real cost
 cd terraform && terraform init -backend-config=backend.hcl && terraform apply -var='admin_cidrs=["<ip>/32"]'
-# (add -var="artifacts_bucket_name=$(terraform -chdir=bootstrap output -raw artifacts_bucket_name)"
-# for the fine-tuning pipeline: MLflow's Pod Identity to the bootstrap's artifacts bucket)
+# plus -var="artifacts_bucket_name=$(terraform -chdir=bootstrap output -raw artifacts_bucket_name)":
+# Pod Identity to the bootstrap's artifacts bucket for MLflow and for vLLM, which
+# downloads the LoRA adapters it serves from it (without it vLLM doesn't start)
 
 # Optional, experimental: EBS snapshot with the vLLM image pre-pulled for the GPU nodes'
 # data volume. Build it any time; point the gpu EC2NodeClass at it (or back to `off`)
@@ -71,6 +72,9 @@ docker run --rm -v "$PWD/apps/rag/eval":/eval:ro llm-platform-rag:dev python -m 
 # ANSWERS=/eval/judge/calibration.json checks the judge itself against known verdicts.
 docker run --rm -v "$PWD/apps/rag/eval":/eval -w /eval/judge -e ANSWERS=/eval/answers/<date>.json -e ANTHROPIC_API_KEY -e HOME=/tmp -e PROMPTFOO_DISABLE_TELEMETRY=1 --entrypoint promptfoo ghcr.io/promptfoo/promptfoo:0.125.1 eval --no-cache -o /eval/judge/results.json
 python3 apps/rag/eval/judge/summary.py apps/rag/eval/judge/results.json
+# Promotion gate for a LoRA adapter: the same questions answered with
+# `rag.answers --model <adapter>` and with the base model, each judged, then
+python3 apps/rag/eval/judge/promote.py --base <base-results.json> --candidate <candidate-results.json>
 # Fine-tuning: unit tests run inside the CPU image (they need torch); the
 # pipeline smoke test runs Argo Workflows + MLflow + a tiny model on its own
 # kind cluster (llm-finetune-local)
@@ -195,8 +199,8 @@ anywhere yet — it only appears as a documented next step in the comments at th
 of `prometheus-grafana-values.yaml`.
 
 **Scale-to-zero spans three layers.** The ScaledObject has three triggers:
-`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model="local-mistral"}`
-from LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads
+`gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=~"local-mistral|rag-behavior-.*"}`
+(the base model and the LoRA adapters vLLM serves) from LiteLLM (always running) to wake vLLM from 0, and `vllm-queue` reads
 `vllm:num_requests_waiting` (colon in the name) to scale out once vLLM is up. A
 vLLM-only trigger can never wake it: at 0 replicas nothing publishes the metric.
 A third one, `startup-in-progress` (kube-state-metrics), holds the replica while its pod
@@ -303,6 +307,17 @@ Argo Workflows' full CRDs (~5 MB each) pushed Argo CD's application
 controller past 1 GiB into an OOMKill loop: keep its 2 GiB limit. MLflow's
 registry is lost at teardown: export results first (`apps/finetune/results/`).
 Measured results: docs/fine-tuning.md.
+Serving adapters: vLLM loads them with `--enable-lora`/`--lora-modules`, from
+an init container that downloads them from the artifacts bucket at every
+start (runtime-loaded adapters wouldn't survive scale-to-zero; read-only Pod
+Identity for the `vllm` service account, bucket name from the
+`artifacts-bucket` ConfigMap). An adapter name lives in four places that must
+match: the init container's `ADAPTERS` and `--lora-modules` in
+`k8s/vllm/deployment.yaml`, a LiteLLM model (no fallback, on purpose) and the
+RAG API's `ALLOWED_MODELS`, which `/ask`'s optional `model` field is checked
+against. `rag.answers --model` answers the evaluation set with an adapter;
+`judge/promote.py` decides (target metric must improve, the others may drop
+by at most one check); promoting is a commit of the RAG API's `CHAT_MODEL`.
 
 ## Repo-wide conventions
 

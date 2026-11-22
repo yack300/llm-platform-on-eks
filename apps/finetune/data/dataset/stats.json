@@ -1,6 +1,6 @@
 {
   "model": "claude-sonnet-5",
-  "seeds": 31,
+  "seeds": 40,
   "teacher_errors": 115,
   "dropped_similar": 0,
   "dropped_teacher": {
@@ -10,21 +10,21 @@
   "max_eval_similarity_kept": 0.795,
   "seed_retrieved": "137/157",
   "train": {
-    "n": 219,
-    "answer_en": 68,
-    "answer_es": 61,
-    "decline_en": 43,
-    "decline_es": 47
+    "n": 272,
+    "answer_en": 73,
+    "answer_es": 69,
+    "decline_en": 68,
+    "decline_es": 62
   },
   "validation": {
-    "n": 28,
-    "answer_en": 8,
-    "answer_es": 8,
-    "decline_en": 6,
-    "decline_es": 6
+    "n": 35,
+    "answer_en": 10,
+    "answer_es": 9,
+    "decline_en": 7,
+    "decline_es": 9
   },
   "usage": {
-    "input_tokens": 414462,
-    "output_tokens": 40220
+    "input_tokens": 555981,
+    "output_tokens": 48475
   }
 }

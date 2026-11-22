@@ -43,11 +43,13 @@ spec:
         # 0, so a plain increase() never sees the first request after LiteLLM
         # starts (found on the first EKS run). Series older than the window use
         # increase(); brand-new ones count with their current value.
+        # LoRA adapters (rag-behavior-*) run on the same vLLM, so a request
+        # for one of them has to wake it too.
         query: >-
           sum(
-            (increase(litellm_deployment_total_requests_total{requested_model="local-mistral"}[5m])
-              and litellm_deployment_total_requests_total{requested_model="local-mistral"} offset 5m)
-            or litellm_deployment_total_requests_total{requested_model="local-mistral"}
+            (increase(litellm_deployment_total_requests_total{requested_model=~"local-mistral|rag-behavior-.*"}[5m])
+              and litellm_deployment_total_requests_total{requested_model=~"local-mistral|rag-behavior-.*"} offset 5m)
+            or litellm_deployment_total_requests_total{requested_model=~"local-mistral|rag-behavior-.*"}
           ) or vector(0)
         activationThreshold: "0"  # any request activates (wakes from 0)
         # Scale-out is left to vllm-queue: ~2 req/s per replica is higher than

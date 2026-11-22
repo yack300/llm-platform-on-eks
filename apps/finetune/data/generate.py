@@ -37,6 +37,7 @@ import concurrent.futures
 import json
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -207,6 +208,9 @@ def main() -> None:
     p.add_argument("--negatives-file",
                    help="unanswerable questions with their answers (data/negatives.yaml) instead "
                         "of asking the API for them")
+    p.add_argument("--near-misses", type=int, default=0,
+                   help="with --extend: re-ask this many answered questions with the sections their "
+                        "reference answer cited removed from the context (near-miss examples)")
     args = p.parse_args()
 
     rng = random.Random(args.random_seed)
@@ -245,13 +249,33 @@ def main() -> None:
             q["remove_seed"] = rng.random() < args.removed_fraction
         if args.negatives_file:
             neg = yaml.safe_load(open(args.negatives_file))["questions"]
-        else:
+        elif negatives > 0:
             neg = ask_claude(http, args.model, NEGATIVES_PROMPT.format(n=negatives, half=negatives // 2),
                              QUESTIONS_SCHEMA, 4000, usage)["questions"]
+        else:
+            neg = []
         asked = {norm(e["question"]) for e in existing}
         items += [{"seed": None, "lang": q["lang"], "question": q["question"].strip(), "remove_seed": False,
                    **({"answer": q["answer"].strip()} if "answer" in q else {})}
                   for q in neg if norm(q["question"]) not in asked]
+
+        # Near misses: the first adapter answered questions whose passage was
+        # missing from the context with facts from neighboring passages. Each
+        # of these is a question already answered in the dataset, asked again
+        # without the sections its reference answer cited, so the same
+        # question appears with and without its evidence. It keeps the
+        # original's split, so validation stays unseen.
+        if args.near_misses:
+            answered = [e for e in existing if e["answerable"] and e["seed"] is not None
+                        and not e["remove_seed"] and re.search(r"\[\d+\]", e["answer"])]
+            rng.shuffle(answered)
+            for e in answered[:args.near_misses]:
+                cited = {int(n) for n in re.findall(r"\[(\d+)\]", e["answer"])}
+                items.append({
+                    "seed": e["seed"], "lang": e["lang"], "question": e["question"],
+                    "remove_seed": True, "near_miss": True, "_split": e["_split"],
+                    "removed_sections": sorted({e["sources"][n - 1] for n in cited if 0 < n <= len(e["sources"])}),
+                })
 
         # 3. Contamination.
         sims = eval_similarity([q["question"] for q in items], [q["question"] for q in eval_questions])
@@ -267,9 +291,12 @@ def main() -> None:
         # thread-safe); only the teacher calls run in parallel.
         def retrieve(q):
             hits = index.query_points(COLLECTION, query=embeddings.embed_query(q["question"]),
-                                      limit=args.k + 6, with_payload=True).points
+                                      limit=args.k + 12, with_payload=True).points
             context = [Chunk(h.payload["source"], h.payload["heading"], h.payload["text"]) for h in hits]
-            if q["seed"] is not None:
+            if q.get("near_miss"):
+                # Whole sections, as with remove_seed: windows overlap.
+                context = [c for c in context if f"{c.source} - {c.heading}" not in q["removed_sections"]]
+            elif q["seed"] is not None:
                 seed = seeds[q["seed"]]
                 q["seed_retrieved"] = seed in context[:args.k]
                 if q["remove_seed"]:
@@ -324,10 +351,14 @@ def main() -> None:
         else:
             continue
         bad.append(e)
-    examples = existing + [e for e in examples if "dropped_because" not in e]
-    examples.sort(key=lambda e: (e["seed"] is None, e["seed"] or 0, e["question"]))
-    for n, e in enumerate(examples):
+    # Existing examples keep their ids and order (results files refer to
+    # them by id); new ones follow, numbered after the highest id.
+    new = sorted((e for e in examples if "dropped_because" not in e),
+                 key=lambda e: (e["seed"] is None, e["seed"] or 0, e["question"]))
+    start = 1 + max((int(e["id"][2:]) for e in existing), default=-1)
+    for n, e in enumerate(new, start=start):
         e["id"] = f"ex{n:04d}"
+    examples = existing + new
 
     # 5. Split by seed; negatives spread over both.
     val_seeds = set(range(len(seeds))[:max(1, round(len(seeds) * args.val_fraction))])

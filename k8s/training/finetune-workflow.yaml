@@ -24,7 +24,7 @@ spec:
   arguments:
     parameters:
       - name: image
-        value: ghcr.io/yack300/llm-platform-finetune:0.1.0
+        value: ghcr.io/yack300/llm-platform-finetune:0.1.1
       - name: base-model
         value: mistralai/Mistral-7B-Instruct-v0.2
       # Extra flags for each step (python -m finetune.train / .evaluate).

@@ -18,6 +18,17 @@ data:
           api_base: http://vllm-inference.llm-platform.svc.cluster.local:8000/v1
           api_key: "no-real-key-needed-locally"
 
+      # The fine-tuned LoRA adapter (docs/fine-tuning.md), served by the same
+      # vLLM under its --lora-modules name. No fallback on purpose: it's
+      # asked to be evaluated, and an answer from claude-fallback would say
+      # nothing about it. The RAG API only sends it requests that ask for it
+      # (ALLOWED_MODELS).
+      - model_name: rag-behavior-v1
+        litellm_params:
+          model: openai/rag-behavior-v1
+          api_base: http://vllm-inference.llm-platform.svc.cluster.local:8000/v1
+          api_key: "no-real-key-needed-locally"
+
       # External provider used as fallback while vLLM is scaled to 0 or
       # cold-starting (see k8s/vllm/keda-scaledobject.yaml), and as the
       # reference for the cost comparison. Optional: without ANTHROPIC_API_KEY

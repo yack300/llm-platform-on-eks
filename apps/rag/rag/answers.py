@@ -11,6 +11,8 @@ go out on stdout:
 Questions go one at a time, like a user would ask them. Each answer records
 the model that produced it: while vLLM cold-starts LiteLLM falls back to
 claude-fallback, and those answers say nothing about the local model.
+--model asks another allowed model instead (a LoRA adapter served by vLLM),
+so base and candidate answer the same questions through the same retrieval.
 """
 import argparse
 import collections
@@ -27,6 +29,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--url", default="http://localhost:8080/ask")
     parser.add_argument("--top-k", type=int, default=4)
+    parser.add_argument("--model", help="an ALLOWED_MODELS entry instead of the API's default")
     args = parser.parse_args()
 
     questions = yaml.safe_load(sys.stdin)["questions"]
@@ -35,7 +38,7 @@ def main() -> None:
         for q in questions:
             start = time.perf_counter()
             resp = http.post(args.url, json={"question": q["question"], "top_k": args.top_k,
-                                             "include_context": True})
+                                             "include_context": True, "model": args.model})
             seconds = round(time.perf_counter() - start, 2)
             if resp.status_code != 200:
                 print(f"{q['id']}: HTTP {resp.status_code} {resp.text[:200]}", file=sys.stderr)
@@ -57,7 +60,8 @@ def main() -> None:
 
     models = collections.Counter(a.get("model", "error") for a in answers)
     print(f"answers by model: {dict(models)}", file=sys.stderr)
-    json.dump({"date": datetime.date.today().isoformat(), "top_k": args.top_k, "answers": answers},
+    json.dump({"date": datetime.date.today().isoformat(), "top_k": args.top_k,
+               "requested_model": args.model, "answers": answers},
               sys.stdout, indent=2, ensure_ascii=False)
     sys.stdout.write("\n")
 

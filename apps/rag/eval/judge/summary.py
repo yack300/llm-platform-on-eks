@@ -19,7 +19,11 @@ import sys
 METRICS = ["correct", "faithful", "declines", "language"]
 
 
-def main(paths: list[str]) -> None:
+def grade(paths: list[str]):
+    """Tallies promptfoo results files (later files replace earlier ones'
+    results for the same question): the results, (group, metric) ->
+    [passed, total], failed checks, calibration disagreements and checks the
+    judge couldn't grade."""
     by_id = {}
     for path in paths:
         for r in json.load(open(path))["results"]["results"]:
@@ -51,7 +55,11 @@ def main(paths: list[str]) -> None:
             expected = json.loads(meta["expect"]).get(metric) if "expect" in meta else None
             if expected is not None and expected != c["pass"]:
                 disagreements.append((meta.get("id"), metric, reason))
+    return results, counts, failures, disagreements, grader_errors
 
+
+def main(paths: list[str]) -> None:
+    results, counts, failures, disagreements, grader_errors = grade(paths)
     if grader_errors:
         ids = ",".join(sorted({qid for qid, _, _ in grader_errors}))
         sys.exit(f"The judge couldn't grade {len(grader_errors)} checks, e.g. "

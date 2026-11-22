@@ -26,12 +26,56 @@ spec:
       labels:
         app: vllm-inference
     spec:
+      # Bound by Pod Identity (terraform/main.tf) to read the LoRA adapters
+      # from the artifacts bucket.
+      serviceAccountName: vllm
       # Tolerates the GPU node group taint defined in Terraform
       tolerations:
         - key: "nvidia.com/gpu"
           operator: "Equal"
           value: "present"
           effect: "NoSchedule"
+      # LoRA adapters from the artifacts bucket (fine-tuning pipeline,
+      # docs/fine-tuning.md), downloaded at every start: an adapter loaded at
+      # runtime would be lost on each scale-to-zero. ADAPTERS is
+      # "name=path name=path", paths under the bucket; each name must match a
+      # --lora-modules entry below, a LiteLLM model and the RAG API's
+      # ALLOWED_MODELS. The bucket's name is per account, so it comes from the
+      # artifacts-bucket ConfigMap (scripts/bootstrap-argocd.sh). If the
+      # download fails vLLM doesn't start: listed adapters are part of what
+      # it serves.
+      initContainers:
+        - name: fetch-adapters
+          image: amazon/aws-cli:2.42.1
+          command: [sh, -ec]
+          args:
+            - |
+              for a in $ADAPTERS; do
+                name=${a%%=*}; path=${a#*=}
+                aws s3 sync "s3://$BUCKET/$path" "/adapters/$name" --only-show-errors
+                echo "$name: $(ls /adapters/$name | tr '\n' ' ')"
+              done
+          env:
+            - name: ADAPTERS
+              value: rag-behavior-v1=mlflow/2/4f4368e88c7b4f9d96556b16d704e7cd/artifacts/adapter
+            - name: BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: artifacts-bucket
+                  key: bucket
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: adapters
+              mountPath: /adapters
       containers:
         - name: vllm
           image: vllm/vllm-openai:v0.30.0 # pinned: check hub.docker.com/r/vllm/vllm-openai/tags for newer releases
@@ -52,6 +96,17 @@ spec:
             - "4096"
             - "--gpu-memory-utilization"
             - "0.85"
+            # LoRA adapters on top of the AWQ base (vLLM tests LoRA on AWQ
+            # models), each served as its own model name next to
+            # local-mistral, so base and adapters answer side by side on one
+            # GPU. Rank 16: the fine-tuning default.
+            - "--enable-lora"
+            - "--max-lora-rank"
+            - "16"
+            - "--max-loras"
+            - "2"
+            - "--lora-modules"
+            - "rag-behavior-v1=/adapters/rag-behavior-v1"
           ports:
             - containerPort: 8000
           securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml
@@ -74,6 +129,10 @@ spec:
           # only a liveness probe (90s delay) the kubelet killed vLLM mid-
           # download on the first EKS run. The startup probe gives it up to
           # 20 minutes; liveness/readiness only start once it has passed.
+          volumeMounts:
+            - name: adapters
+              mountPath: /adapters
+              readOnly: true
           startupProbe:
             httpGet:
               path: /health
@@ -94,6 +153,16 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+      volumes:
+        - name: adapters
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vllm
+  namespace: llm-platform
 ---
 apiVersion: v1
 kind: Service

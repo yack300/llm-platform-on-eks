@@ -52,7 +52,7 @@ else
   echo "    Secret grafana-admin already exists, skipping creation."
 fi
 
-echo "==> Pointing MLflow at the artifacts bucket..."
+echo "==> Pointing MLflow and vLLM at the artifacts bucket..."
 # k8s/training/mlflow.yaml reads its artifact store from this ConfigMap: the
 # bucket name (from terraform/bootstrap) is per account, so it isn't in Git.
 # MLflow reaches it through Pod Identity (terraform apply with
@@ -63,9 +63,13 @@ if [ -n "$ARTIFACTS_BUCKET" ]; then
   kubectl -n training create configmap mlflow-storage \
     --from-literal=artifacts-destination="s3://${ARTIFACTS_BUCKET}/mlflow" \
     --dry-run=client -o yaml | kubectl apply -f -
+  # vLLM's init container downloads the LoRA adapters it serves from here.
+  kubectl -n llm-platform create configmap artifacts-bucket \
+    --from-literal=bucket="$ARTIFACTS_BUCKET" --dry-run=client -o yaml | kubectl apply -f -
 else
   echo "    No artifacts bucket (apply terraform/bootstrap, or set ARTIFACTS_BUCKET):"
-  echo "    MLflow won't start until the mlflow-storage ConfigMap exists."
+  echo "    MLflow and vLLM won't start until the mlflow-storage and"
+  echo "    artifacts-bucket ConfigMaps exist."
 fi
 
 echo "==> Applying the root Application (app of apps)..."

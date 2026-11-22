@@ -25,6 +25,12 @@ class Settings:
     # Routed by LiteLLM: vLLM (or the local Ollama mock), with claude-fallback
     # while it cold-starts.
     chat_model: str = os.environ.get("CHAT_MODEL", "local-mistral")
+    # Other gateway models a request may ask for instead (/ask "model"), e.g.
+    # LoRA adapters served by vLLM, to compare them on the same questions.
+    # A list, so a client can't pick any model the gateway routes to
+    # (claude-fallback bills per token).
+    allowed_models: tuple[str, ...] = tuple(
+        m.strip() for m in os.environ.get("ALLOWED_MODELS", "").split(",") if m.strip())
     # Seconds. The local CPU mock can take over a minute for a RAG-sized
     # prompt on a busy laptop.
     llm_timeout: float = float(os.environ.get("LLM_TIMEOUT", "120"))
@@ -34,6 +40,14 @@ class Settings:
     embed_batch: int = int(os.environ.get("EMBED_BATCH", "8"))
     chunk_size: int = int(os.environ.get("CHUNK_SIZE", "1000"))
     chunk_overlap: int = int(os.environ.get("CHUNK_OVERLAP", "150"))
+
+    def resolve_model(self, requested: str | None) -> str:
+        """The model to call: the default, or an allowed one by name."""
+        if not requested or requested == self.chat_model:
+            return self.chat_model
+        if requested not in self.allowed_models:
+            raise ValueError(f"model {requested!r} not allowed (ALLOWED_MODELS)")
+        return requested
 
 
 settings = Settings()

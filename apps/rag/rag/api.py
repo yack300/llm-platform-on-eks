@@ -1,6 +1,6 @@
 """RAG API: question -> retrieve from Qdrant -> answer through LiteLLM.
 
-    POST /ask      {"question": "...", "top_k": 4, "include_context": false}
+    POST /ask      {"question": "...", "top_k": 4, "include_context": false, "model": null}
     GET  /healthz  liveness/readiness
     GET  /metrics  Prometheus (scraped via k8s/observability/servicemonitors.yaml)
 
@@ -59,6 +59,9 @@ class Ask(BaseModel):
     # Return each passage's text with its source: what an answer-quality
     # judge needs to check the answer against (rag.answers sets it).
     include_context: bool = False
+    # Another model to answer with (settings.allowed_models), e.g. a LoRA
+    # adapter being evaluated; the default CHAT_MODEL otherwise.
+    model: str | None = Field(default=None, max_length=100)
 
 
 @app.get("/healthz")
@@ -71,6 +74,11 @@ def ask(body: Ask) -> dict:
     # One trace per question: rag.ask under FastAPI's request span, and
     # LiteLLM's spans under rag.generate (it reads the traceparent injected
     # into the model call), so Tempo shows the whole path.
+    try:
+        model = settings.resolve_model(body.model)
+    except ValueError as e:
+        REQUESTS.labels("bad_model").inc()
+        raise HTTPException(400, str(e)) from e
     with tracer.start_as_current_span("rag.ask") as span:
         # The question is the project's docs domain, not user data worth
         # redacting; it's what makes a trace readable.
@@ -95,7 +103,7 @@ def ask(body: Ask) -> dict:
 
         with tracer.start_as_current_span("rag.generate") as generate:
             generate.set_attribute("gen_ai.operation.name", "chat")
-            generate.set_attribute("gen_ai.request.model", settings.chat_model)
+            generate.set_attribute("gen_ai.request.model", model)
             headers = {"Authorization": f"Bearer {settings.litellm_api_key}"}
             propagate.inject(headers)  # traceparent for LiteLLM
             t = time.perf_counter()
@@ -103,7 +111,7 @@ def ask(body: Ask) -> dict:
                 resp = app.state.http.post(
                     f"{settings.litellm_url}/chat/completions",
                     headers=headers,
-                    json={"model": settings.chat_model, "temperature": 0, "max_tokens": 400,
+                    json={"model": model, "temperature": 0, "max_tokens": 400,
                           "messages": build_messages(body.question, [chunk for chunk, _ in hits])},
                 )
                 resp.raise_for_status()
