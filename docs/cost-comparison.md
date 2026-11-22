@@ -332,6 +332,26 @@ of GPU):
 About $0.15 of it was ~16 minutes of cluster time lost to a broken wait loop
 in a helper script (Qwen was actually ready in ~4 minutes).
 
+## Seventh run (2026-11-08): tracing with Tempo
+
+Ten questions traced end to end with Mistral-7B warm, plus the cold-start
+fallback; results in [tracing.md](tracing.md#seventh-eks-run-2026-11-08-where-the-time-goes).
+
+What this run cost (Cost Explorer; ~1 h 10 min of cluster time, judging by
+the EKS control plane line):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU node) | $0.25 |
+| KMS (includes a key not created by this project) | $0.20 |
+| EKS control plane | $0.12 |
+| EC2 other (EBS volumes, data transfer) | $0.07 |
+| VPC (public IPv4 addresses) | $0.01 |
+| S3 (Terraform state) | < $0.01 |
+| **Total before tax** | **$0.65** |
+
+The cheapest run so far: a single short session with nothing to rebuild.
+
 ## Eighth run (2026-11-17): fine-tuning a LoRA adapter
 
 The fine-tuning workflow trained and evaluated a LoRA adapter of Mistral-7B
@@ -370,9 +390,9 @@ What every EKS session cost, from Cost Explorer, before tax:
 | Fourth | 2026-10-20 | RAG service with signed images | $1.07 |
 | Fifth | 2026-10-26 | Judging RAG answers | $0.90 |
 | Sixth | 2026-11-02 | Mistral-7B vs Qwen2.5-7B | $0.76 |
-| Seventh | 2026-11-08 | Tracing with Tempo | not yet reported |
+| Seventh | 2026-11-08 | Tracing with Tempo | $0.65 |
 | Eighth | 2026-11-17 | Fine-tuning a LoRA adapter | $1.11 |
-| **Seven runs with a reported cost** | | | **$8.89** |
+| **All eight runs** | | | **$9.54** |
 
 ## What the whole session cost
 
