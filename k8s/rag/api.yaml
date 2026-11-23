@@ -35,10 +35,15 @@ spec:
               value: http://qdrant.llm-platform.svc.cluster.local:6333
             - name: LITELLM_URL
               value: http://litellm-gateway.llm-platform.svc.cluster.local:4000/v1
-            # Models /ask may be asked for instead of local-mistral: the LoRA
-            # adapters vLLM serves (k8s/vllm/deployment.yaml), for evaluation.
+            # The served model: the LoRA adapter that passed the promotion gate
+            # (apps/rag/eval/answers/2026-11-23-promotion.md), on top of
+            # local-mistral (k8s/vllm/deployment.yaml).
+            - name: CHAT_MODEL
+              value: rag-behavior-v1
+            # Models /ask may be asked for instead: the base model, to judge
+            # the next candidate against both.
             - name: ALLOWED_MODELS
-              value: rag-behavior-v1,rag-behavior-v2
+              value: local-mistral
             # Traces to Tempo (rag/tracing.py; off when unset, as on kind,
             # where scripts/deploy-local.sh drops this variable).
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

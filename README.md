@@ -45,11 +45,13 @@ through the LiteLLM gateway. Full numbers, method and caveats in
   model and the RAG service plus the gateway add under 200 ms; during a cold
   start, ~75% of a fallback answer is LiteLLM retrying the scaled-to-zero
   backend. Details in [docs/tracing.md](docs/tracing.md).
-- **A LoRA adapter fixes the language, not the facts** (fine-tuning on the
-  platform: Argo Workflows, MLflow, QLoRA on one T4 in 29 min): Spanish
-  questions answered in Spanish went from 0/14 to 14/14, refusals got
-  concise, but answers aren't more faithful, so it isn't served until the
-  judge says so. Details in [docs/fine-tuning.md](docs/fine-tuning.md).
+- **A fine-tuned LoRA adapter now answers the RAG questions**, promoted by
+  a gate, not by eye (Argo Workflows, MLflow, QLoRA on one T4 in 29 min,
+  served next to the base model by the same vLLM): Spanish questions
+  answered in Spanish went from 0/15 to 15/15 and the judge found it more
+  faithful (35 -> 43 of 56) with no loss in correctness; a second candidate
+  trained on harder refusals lost 2 correct answers and was rejected.
+  Details in [docs/fine-tuning.md](docs/fine-tuning.md).
 - **Same GPU, ~6.8x the throughput** going from 1 to 8 concurrent requests,
   with p50 latency only going from 2.5 s to 3 s (vLLM continuous batching).
 - **Bugs that only showed up on real infrastructure**, fixed in this repo:

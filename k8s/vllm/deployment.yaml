@@ -57,7 +57,7 @@ spec:
               done
           env:
             - name: ADAPTERS
-              value: rag-behavior-v1=mlflow/2/4f4368e88c7b4f9d96556b16d704e7cd/artifacts/adapter rag-behavior-v2=mlflow/1/f312a60ea1bc4ad59d2207b0bf789246/artifacts/adapter
+              value: rag-behavior-v1=mlflow/2/4f4368e88c7b4f9d96556b16d704e7cd/artifacts/adapter
             - name: BUCKET
               valueFrom:
                 configMapKeyRef:
@@ -107,7 +107,6 @@ spec:
             - "2"
             - "--lora-modules"
             - "rag-behavior-v1=/adapters/rag-behavior-v1"
-            - "rag-behavior-v2=/adapters/rag-behavior-v2"
           ports:
             - containerPort: 8000
           securityContext: # required by kyverno-policies/disallow-privileged-containers.yaml

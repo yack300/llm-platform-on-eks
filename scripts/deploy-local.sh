@@ -101,10 +101,12 @@ echo "==> Applying RAG (ingestion Job + API)..."
 # Argo CD does this with a Sync hook).
 kubectl -n llm-platform delete job rag-ingest --ignore-not-found
 # No Tempo on kind (memory): drop the API's OTLP endpoint (the variable and
-# its value line), which leaves tracing off.
+# its value line), which leaves tracing off. Nor LoRA adapters (the Ollama
+# mock serves local-mistral only): drop CHAT_MODEL, back to its default.
 for f in ../k8s/rag/*.yaml; do
   sed -e 's#ghcr.io/yack300/llm-platform-rag:[^[:space:]]*#llm-platform-rag:dev#' \
-      -e '/name: OTEL_EXPORTER_OTLP_ENDPOINT/,+1d' "$f" | kubectl apply -f -
+      -e '/name: OTEL_EXPORTER_OTLP_ENDPOINT/,+1d' \
+      -e '/name: CHAT_MODEL/,+1d' "$f" | kubectl apply -f -
 done
 
 echo "----------------------------------------------------------------------"

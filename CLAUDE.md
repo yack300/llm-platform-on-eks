@@ -317,7 +317,11 @@ match: the init container's `ADAPTERS` and `--lora-modules` in
 RAG API's `ALLOWED_MODELS`, which `/ask`'s optional `model` field is checked
 against. `rag.answers --model` answers the evaluation set with an adapter;
 `judge/promote.py` decides (target metric must improve, the others may drop
-by at most one check); promoting is a commit of the RAG API's `CHAT_MODEL`.
+by at most one check); promoting is a commit of the RAG API's `CHAT_MODEL`
+plus a claude-fallback for that adapter in LiteLLM (candidates under
+evaluation get none, so their answers can't come from Claude). Since the
+ninth run the RAG API serves `rag-behavior-v1`; `deploy-local.sh` strips
+`CHAT_MODEL` on kind, whose Ollama mock has no adapters.
 
 ## Repo-wide conventions
 

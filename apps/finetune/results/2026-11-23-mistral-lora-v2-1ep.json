@@ -1,0 +1,788 @@
+{
+ "date": "2026-11-23",
+ "run": "ninth EKS run",
+ "served_as": "rag-behavior-v2",
+ "model_version": "1",
+ "adapter": "s3://<artifacts bucket>/mlflow/1/f312a60ea1bc4ad59d2207b0bf789246/artifacts/adapter",
+ "params": {
+  "base_model": "mistralai/Mistral-7B-Instruct-v0.2",
+  "dataset_hash": "e87f303f8f28",
+  "train_examples": "272",
+  "validation_examples": "35",
+  "skipped_too_long": "0",
+  "quantization": "nf4",
+  "lora_r": "16",
+  "lora_alpha": "32",
+  "lora_dropout": "0.05",
+  "target_modules": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+  "trainable_params": "41943040",
+  "total_params": "7283675136",
+  "image_version": "ghcr.io/yack300/llm-platform-finetune:0.1.1",
+  "device": "Tesla T4",
+  "transformers_version": "5.23.0",
+  "architectures": "['MistralForCausalLM']",
+  "output_hidden_states": "False",
+  "return_dict": "True",
+  "dtype": "float16",
+  "chunk_size_feed_forward": "0",
+  "is_encoder_decoder": "False",
+  "id2label": "{0: 'LABEL_0', 1: 'LABEL_1'}",
+  "label2id": "{'LABEL_0': 0, 'LABEL_1': 1}",
+  "problem_type": "None",
+  "vocab_size": "32000",
+  "hidden_size": "4096",
+  "intermediate_size": "14336",
+  "num_hidden_layers": "32",
+  "num_attention_heads": "32",
+  "num_key_value_heads": "8",
+  "head_dim": "128",
+  "hidden_act": "silu",
+  "max_position_embeddings": "32768",
+  "initializer_range": "0.02",
+  "rms_norm_eps": "1e-05",
+  "use_cache": "False",
+  "pad_token_id": "None",
+  "bos_token_id": "1",
+  "eos_token_id": "2",
+  "tie_word_embeddings": "False",
+  "rope_parameters": "{'rope_theta': 1000000.0, 'rope_type': 'default'}",
+  "sliding_window": "None",
+  "attention_dropout": "0.0",
+  "_name_or_path": "mistralai/Mistral-7B-Instruct-v0.2",
+  "model_type": "mistral",
+  "quantization_config": "{'quant_method': <QuantizationMethod.BITS_AND_BYTES: 'bitsandbytes'>, '_load_in_8bit': False, '_load_in_4bit': True, 'llm_int8_threshold': 6.0, 'llm_int8_skip_modules': None, 'llm_int8_enable_fp32_cpu_offload': False, 'llm_int8_has_fp16_weight': False, 'bnb_4bit_quant_type': 'nf4', 'bnb_4bit_use_double_quant': True, 'bnb_4bit_compute_dtype': 'float16', 'bnb_4bit_quant_storage': 'uint8', 'load_in_4bit': True, 'load_in_8bit': False}",
+  "output_attentions": "False",
+  "output_dir": "/tmp/tmpizfqaas0/trainer",
+  "per_device_train_batch_size": "1",
+  "num_train_epochs": "1.0",
+  "max_steps": "-1",
+  "learning_rate": "0.0002",
+  "lr_scheduler_type": "cosine",
+  "lr_scheduler_kwargs": "None",
+  "warmup_steps": "0.05",
+  "optim": "adamw_torch_fused",
+  "optim_args": "None",
+  "weight_decay": "0.0",
+  "adam_beta1": "0.9",
+  "adam_beta2": "0.999",
+  "adam_epsilon": "1e-08",
+  "optim_target_modules": "None",
+  "gradient_accumulation_steps": "8",
+  "average_tokens_across_devices": "True",
+  "max_grad_norm": "1.0",
+  "label_smoothing_factor": "0.0",
+  "bf16": "False",
+  "fp16": "True",
+  "bf16_full_eval": "False",
+  "fp16_full_eval": "False",
+  "tf32": "None",
+  "activation_checkpointing": "True",
+  "activation_checkpointing_kwargs": "None",
+  "gradient_checkpointing": "True",
+  "gradient_checkpointing_kwargs": "None",
+  "torch_compile": "False",
+  "torch_compile_backend": "None",
+  "torch_compile_mode": "None",
+  "use_liger_kernel": "False",
+  "liger_kernel_config": "None",
+  "neftune_noise_alpha": "None",
+  "torch_empty_cache_steps": "None",
+  "auto_find_batch_size": "False",
+  "logging_strategy": "steps",
+  "logging_steps": "5",
+  "logging_first_step": "False",
+  "log_on_each_node": "True",
+  "logging_nan_inf_filter": "True",
+  "include_num_input_tokens_seen": "no",
+  "log_level": "passive",
+  "log_level_replica": "warning",
+  "disable_tqdm": "False",
+  "report_to": "['mlflow']",
+  "run_name": "None",
+  "project": "huggingface",
+  "trackio_space_id": "None",
+  "trackio_bucket_id": "None",
+  "trackio_static_space_id": "None",
+  "eval_strategy": "epoch",
+  "eval_steps": "None",
+  "eval_delay": "0",
+  "per_device_eval_batch_size": "1",
+  "prediction_loss_only": "False",
+  "eval_on_start": "False",
+  "eval_do_concat_batches": "True",
+  "eval_use_gather_object": "False",
+  "eval_accumulation_steps": "None",
+  "include_for_metrics": "[]",
+  "batch_eval_metrics": "False",
+  "save_only_model": "False",
+  "save_strategy": "no",
+  "save_steps": "500",
+  "save_on_each_node": "False",
+  "save_total_limit": "None",
+  "enable_jit_checkpoint": "False",
+  "push_to_hub": "False",
+  "hub_token": "<HUB_TOKEN>",
+  "hub_private_repo": "None",
+  "hub_model_id": "None",
+  "hub_strategy": "every_save",
+  "hub_always_push": "False",
+  "hub_revision": "None",
+  "load_best_model_at_end": "False",
+  "metric_for_best_model": "None",
+  "greater_is_better": "None",
+  "ignore_data_skip": "False",
+  "restore_callback_states_from_checkpoint": "False",
+  "full_determinism": "False",
+  "seed": "42",
+  "data_seed": "None",
+  "use_cpu": "False",
+  "accelerator_config": "{'split_batches': False, 'dispatch_batches': None, 'even_batches': True, 'use_seedable_sampler': True, 'non_blocking': False, 'gradient_accumulation_kwargs': None}",
+  "parallelism_config": "None",
+  "dataloader_drop_last": "False",
+  "dataloader_num_workers": "0",
+  "dataloader_pin_memory": "True",
+  "dataloader_persistent_workers": "False",
+  "dataloader_prefetch_factor": "None",
+  "dataloader_multiprocessing_context": "None",
+  "dataloader_in_order": "True",
+  "remove_unused_columns": "False",
+  "label_names": "None",
+  "train_sampling_strategy": "random",
+  "length_column_name": "length",
+  "ddp_find_unused_parameters": "None",
+  "ddp_bucket_cap_mb": "None",
+  "ddp_broadcast_buffers": "None",
+  "ddp_static_graph": "None",
+  "ddp_backend": "None",
+  "ddp_timeout": "1800",
+  "fsdp": "None",
+  "fsdp_config": "None",
+  "deepspeed": "None",
+  "debug": "[]",
+  "skip_memory_metrics": "True",
+  "do_train": "False",
+  "do_eval": "True",
+  "do_predict": "False",
+  "resume_from_checkpoint": "None",
+  "local_rank": "-1"
+ },
+ "metrics": {
+  "loss": 0.714,
+  "grad_norm": 3.4155,
+  "learning_rate": 0.0,
+  "epoch": 1.0,
+  "train_runtime": 1131.1584,
+  "train_samples_per_second": 0.24,
+  "train_steps_per_second": 0.03,
+  "total_flos": 1.4545562347782144e+16,
+  "train_loss": 0.884,
+  "eval_loss": 0.7003,
+  "eval_runtime": 42.944,
+  "eval_samples_per_second": 0.815,
+  "eval_steps_per_second": 0.815,
+  "train_seconds": 1131.5,
+  "final_eval_loss": 0.7003,
+  "final_eval_runtime": 42.944,
+  "final_eval_samples_per_second": 0.815,
+  "final_eval_steps_per_second": 0.815,
+  "final_epoch": 1.0,
+  "behavior_base_language": 0.486,
+  "behavior_base_language_es": 0.0,
+  "behavior_base_declines": 0.625,
+  "behavior_base_false_declines": 0.053,
+  "behavior_base_cites": 0.947,
+  "behavior_base_seconds": 212.9,
+  "behavior_adapter_language": 1.0,
+  "behavior_adapter_language_es": 1.0,
+  "behavior_adapter_declines": 0.812,
+  "behavior_adapter_false_declines": 0.053,
+  "behavior_adapter_cites": 0.947,
+  "behavior_adapter_seconds": 147.7
+ },
+ "history": {
+  "loss": [
+   {
+    "step": 5,
+    "value": 1.5391
+   },
+   {
+    "step": 10,
+    "value": 0.9204
+   },
+   {
+    "step": 15,
+    "value": 0.8261
+   },
+   {
+    "step": 20,
+    "value": 0.7656
+   },
+   {
+    "step": 25,
+    "value": 0.695
+   },
+   {
+    "step": 30,
+    "value": 0.714
+   }
+  ],
+  "eval_loss": [
+   {
+    "step": 34,
+    "value": 0.7003
+   },
+   {
+    "step": 34,
+    "value": 0.7003
+   }
+  ],
+  "learning_rate": [
+   {
+    "step": 5,
+    "value": 0.0002
+   },
+   {
+    "step": 10,
+    "value": 0.0002
+   },
+   {
+    "step": 15,
+    "value": 0.0001
+   },
+   {
+    "step": 20,
+    "value": 0.0001
+   },
+   {
+    "step": 25,
+    "value": 0.0
+   },
+   {
+    "step": 30,
+    "value": 0.0
+   }
+  ],
+  "grad_norm": [
+   {
+    "step": 5,
+    "value": 4.0167
+   },
+   {
+    "step": 10,
+    "value": 3.3879
+   },
+   {
+    "step": 15,
+    "value": 2.7125
+   },
+   {
+    "step": 20,
+    "value": 4.1725
+   },
+   {
+    "step": 25,
+    "value": 2.4253
+   },
+   {
+    "step": 30,
+    "value": 3.4155
+   }
+  ]
+ },
+ "generations": {
+  "base": [
+   {
+    "id": "ex0000",
+    "lang": "en",
+    "answerable": true,
+    "question": "In the fourth EKS run spot check, how many of the 6 hand-picked questions did the RAG service answer correctly?",
+    "answer": "The RAG service answered 4 of the 6 hand-picked questions correctly in the fourth EKS run [1]."
+   },
+   {
+    "id": "ex0001",
+    "lang": "en",
+    "answerable": true,
+    "question": "What issue was observed with Spanish questions during the fourth EKS run spot check of the RAG service?",
+    "answer": "Spanish questions retrieved worse and got English answers despite the instructions being written in Spanish as the last line of the prompt [1]. This is a model limitation and not something that can be fixed by prompting alone [4]."
+   },
+   {
+    "id": "ex0002",
+    "lang": "en",
+    "answerable": false,
+    "question": "Why was a new measurement and CI gate introduced for retrieval evaluation instead of relying on the earlier spot check?",
+    "answer": "The new measurement and CI gate were introduced for retrieval evaluation because the earlier spot check was not sufficient to accurately assess the performance of the model. The larger set of questions in the new evaluation contains more complex and harder questions, which resulted in lower hit rates and MRR compared to the original set. This indicates that the model's ability to retrieve relevant information has changed, and therefore, a more comprehensive evaluation was needed to ensure the quality of the model. [1]\n\nAdditionally, the new evaluation includes metrics such as hit@1, hit@k, MRR, and separation, which provide more detailed information about the model's performance compared to the earlier spot check. These metrics allow for a more nuanced understanding of the model's strengths and weaknesses, and can help identify specific areas for improvement. [2]\n\nFurthermore, the new evaluation is based on a larger set of questions, which includes questions on new topics and in different languages, making it a more representative sample of the types of queries the model may encounter in practice. [3]\n\nFinally, the new evaluation is run as part of the CI pipeline, which ensures that any changes to the model or the corpus are immediately evaluated and"
+   },
+   {
+    "id": "ex0003",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Cuántas de las 6 preguntas seleccionadas a mano respondió mal o incompletamente el servicio RAG en la cuarta ejecución en EKS?",
+    "answer": "The context does not directly answer the question about how many of the six hand-picked questions were answered incorrectly or incompletely by the RAG service in the fourth EKS run. However, it does mention that the service answered 4 of the 6 questions correctly, missed one fact, and showed that Spanish questions retrieved worse. Based on this information, it can be inferred that at least one question was answered incorrectly or incompletely. Therefore, the answer is: At least one question was answered incorrectly or incompletely by the RAG service in the fourth EKS run.\n\nThe passages used as references for this answer are [1] and [4]."
+   },
+   {
+    "id": "ex0004",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Para qué sirve la nueva compuerta (gate) en CI relacionada con la evaluación de retrieval del servicio RAG?",
+    "answer": "The new gate in CI related to the retrieval evaluation of the RAG service is used to measure how well the RAG service finds the passage that answers a question. It answers a set of hand-picked questions and compares the results with the baseline set in the `apps/rag/eval/baseline.json` file. If any metric drops below the baseline, the job fails [2]. The evaluation is run locally before scanning and publishing the image [3]. The judge, Claude, grades the file with `claude-sonnet-5` to check the quality of the answers [4]. The checks include correctness, faithfulness, declines, and language [4]. The results are reported in the `summary.py` file [2].\n\nTherefore, the new gate in CI is used to ensure that the retrieval evaluation of the RAG service meets the required performance standards and does not regress."
+   },
+   {
+    "id": "ex0005",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué se descubrió sobre el desempeño del servicio RAG al responder preguntas en español en la cuarta ejecución en EKS?",
+    "answer": "The context does not directly answer the question about the performance of the RAG service in handling Spanish questions in the llm-platform-on-eks project. However, we can infer that there were issues with the RAG service's handling of Spanish questions based on the information provided in the context.\n\nAccording to [1], the fourth EKS run answered fewer questions correctly when Spanish questions were used, compared to English questions. Specifically, it answered 4 out of 6 hand-picked questions correctly, missed one fact that was in the docs, and showed that Spanish questions retrieved worse.\n\nAdditionally, we can see from [2] that in a previous run on EKS, the RAG service answered none of the 7 Spanish questions correctly.\n\nFrom [3], we learn that switching to a multilingual embedding model took a hit@4 from 0.70 to 0.90 (Spanish 0.40 -> 0.80) for ~0.5 GiB more memory, but the RAG service only gets ~70-80% correct and faithful with this model.\n\nTherefore, based on the context, it appears that the R"
+   },
+   {
+    "id": "ex0006",
+    "lang": "en",
+    "answerable": true,
+    "question": "In the third run (2026-10-14), how long did it take from request to first vLLM answer when using Karpenter with no image cache versus with a snapshot?",
+    "answer": "From the context provided, it took approximately ~11 minutes for the first vLLM answer when using Karpenter with no image cache. When using Karpenter with a snapshot (either snapshot 1 or snapshot 2), the first vLLM answer was received in approximately 5 minutes and 43 seconds or 5 minutes and 14 seconds. Therefore, the use of a snapshot resulted in a significant reduction in the time it took for the first vLLM answer.\n\n[1] docs/cost-comparison.md - Third run (2026-10-14): Karpenter, image cache that works\n\n| | Karpenter, no cache | Karpenter + snapshot (1) | Karpenter + snapshot (2) |\n|---|---|---|---|\n| Request → first vLLM answer | ~11 min | 5:43 | 5:14 |\n\n[2] docs/cost-comparison.md - Third run (2026-10-14): Karpenter, image cache that works\n\n| | Karpenter, no cache | Karpenter + snapshot (1)"
+   },
+   {
+    "id": "ex0007",
+    "lang": "en",
+    "answerable": true,
+    "question": "What change allowed the EC2 volume's provisioned initialization rate to actually be applied in the third cost comparison run (2026-10-14)?",
+    "answer": "The change was using Karpenter to launch the GPU nodes instead of a managed node group with Cluster Autoscaler. With Karpenter, the data volume's provisioned initialization rate reached EC2 and was successfully applied [2]."
+   },
+   {
+    "id": "ex0008",
+    "lang": "en",
+    "answerable": true,
+    "question": "What provisioned initialization rate and percentage were verified on the data volume in the third cost comparison run?",
+    "answer": "The provisioned initialization rate of the data volume in the third cost comparison run was 300 MiB/s, and it was 100% before vLLM needed it. [1], [3]"
+   },
+   {
+    "id": "ex0009",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Cuánto tardó el pull de la imagen cuando no había caché frente a cuando ya estaba en disco, en la tercera ejecución (2026-10-14)?",
+    "answer": "The context does not provide the information on the image pull time in the third execution (2026-10-14) without a cache."
+   },
+   {
+    "id": "ex0010",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Cuánto tiempo tardó KEDA en detectar la solicitud en cada uno de los tres escenarios de la tercera ejecución (2026-10-14)?",
+    "answer": "The time taken by KEDA to detect the request in each of the three scenarios of the third execution (2026-10-14) is as follows:\n\n| Scenario | Time taken by KEDA to detect the request |\n| --- | --- |\n| Karpenter, no cache | 41 seconds |\n| Karpenter + snapshot (1) | 45 seconds |\n| Karpenter + snapshot (2) | 22 seconds |\n\nTherefore, the time taken by KEDA to detect the request in the first scenario was 41 seconds, in the second scenario was 45 seconds, and in the third scenario was 22 seconds. [Reference: docs/cost-comparison.md]"
+   },
+   {
+    "id": "ex0011",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué componente reemplazó al managed node group junto con Cluster Autoscaler para aprovisionar los nodos GPU en la tercera ejecución (2026-10-14)?",
+    "answer": "Karpenter (`k8s/karpenter/`) replaced the managed node group and Cluster Autoscaler for provisioning the GPU nodes in the third execution (2026-10-14). [1], [2]"
+   },
+   {
+    "id": "ex0012",
+    "lang": "en",
+    "answerable": true,
+    "question": "How many layers make up the llm-platform-on-eks project, and what is the main tool used in each one?",
+    "answer": "The llm-platform-on-eks project consists of five layers, as described in the project layers section of the README.md file [2]. The main tools used in each layer are as follows:\n\n1. Serving: vLLM + KEDA\n2. Model Gateway: LiteLLM\n3. RAG: Qdrant + own Python service\n4. Cost observability: Prometheus + Grafana + Tempo + OpenCost/Kubecost\n5. Security: Trivy, Checkov, Kyverno, GitLeaks\n\nTherefore, the answer is that there are five layers in the llm-platform-on-eks project, and the main tools used in each one are listed above. [1] and [2] were used to obtain this information."
+   },
+   {
+    "id": "ex0013",
+    "lang": "en",
+    "answerable": true,
+    "question": "What role does Qdrant play in the RAG layer, and how is its image handled in terms of security?",
+    "answer": "Qdrant is a part of the RAG layer and is used for searching within the RAG service. In the RAG layer architecture, Qdrant is responsible for indexing and searching the project's own docs [1].\n\nRegarding security, the context mentions that on EKS, the RAG ingestion Job, which includes Qdrant, is an Argo CD Sync hook, and it uses `require-image-signature.yaml` to admit only images with a signature from the repo's ci.yml on the main branch [2]. This ensures that only trusted images are used in the production environment. Additionally, locally, the image is built as `llm-platform-rag:dev` and loaded into kind, but the policy doesn't match the name, providing an extra layer of security [2].\n\nThere is no explicit mention of Trivy, Checkov, or GitLeaks being used for scanning the Qdrant image in the provided context. However, it is mentioned that security is a concern in the project, and several tools are used for security purposes [4]. It is recommended to refer to the specific documentation or configuration files related to these tools for more information"
+   },
+   {
+    "id": "ex0014",
+    "lang": "en",
+    "answerable": true,
+    "question": "Which tools are used for the Security layer of the platform, and what does this layer demonstrate?",
+    "answer": "The Security layer of the platform uses the following tools: Trivy, Checkov, Kyverno, and GitLeaks. This layer demonstrates DevSecOps practices, specifically shift-left security in the pipeline and in the cluster. [1], [3], [5]\n\n[1] README.md - Project layers\n[3] CLAUDE.md - What this repo is\n[5] CLAUDE.md - Commands"
+   },
+   {
+    "id": "ex0015",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Por qué se usa LiteLLM en la capa de Model Gateway y qué concepto de AI Platform Engineering ilustra?",
+    "answer": "LiteLLM is used in the Model Gateway layer because it acts as a unified multi-provider proxy for LLM inference workloads. The concept of AI Platform Engineering that is illustrated is the ability to create a centralized gateway that can route requests to different LLM models, allowing for the use of multiple providers or configurations (in this case, real GPU vs. local mock) while maintaining a consistent client-facing API [1][2]."
+   },
+   {
+    "id": "ex0016",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué combinación de herramientas se encarga de la capa de Serving y qué parte de MLOps representa?",
+    "answer": "The combination of tools responsible for the Serving layer in the llm-platform-on-eks project is vLLM and KEDA. This layer demonstrates MLOps practices for deploying and autoscaling an LLM (Large Language Model) on Kubernetes (1, [2])."
+   },
+   {
+    "id": "ex0017",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué herramientas se usan en la capa de Cost observability y qué aspectos de FinOps demuestran?",
+    "answer": "The tools used in the Cost observability layer are Prometheus, Grafana, Tempo, and OpenCost/Kubecost [1]. The aspects of FinOps (Financial Operations) demonstrated by this layer are cost per request/token and one trace per RAG question [1][3]. The Grafana dashboard computes both the cost of using an external provider and the cost of running the LLM locally in real-time [3]."
+   },
+   {
+    "id": "ex0159",
+    "lang": "en",
+    "answerable": false,
+    "question": "How do Azure Functions bill for execution time?",
+    "answer": "I cannot directly answer the question about Azure Functions billing using the given context as there is no information about Azure Functions in the provided text. The context only discusses the cost of running an EKS cluster on AWS and the performance benchmarks of the LLM platform on EKS."
+   },
+   {
+    "id": "ex0166",
+    "lang": "en",
+    "answerable": false,
+    "question": "How do I reverse a string in JavaScript?",
+    "answer": "I cannot answer the question using only the context provided. The context does not contain any information about reversing a string in JavaScript."
+   },
+   {
+    "id": "ex0167",
+    "lang": "en",
+    "answerable": false,
+    "question": "How do I set up a VPN on Windows 11?",
+    "answer": "I cannot answer the question using the context provided as it does not contain any information about setting up a VPN on Windows 11. The context only discusses various scripts and commands related to deploying and managing an LLM platform on Amazon EKS."
+   },
+   {
+    "id": "ex0181",
+    "lang": "en",
+    "answerable": false,
+    "question": "How often should I water a cactus?",
+    "answer": "I cannot answer that question with the given context. The context only discusses the cost comparison and performance results of using Karpenter with and without an image cache in an EKS cluster. There is no information about a cactus or how often it should be watered."
+   },
+   {
+    "id": "ex0184",
+    "lang": "en",
+    "answerable": false,
+    "question": "What context length does GPT-4 support?",
+    "answer": "Based on the context provided, there is no information about the LLM-platform-on-EKS project that directly answers the question about the maximum context length supported by GPT-4. Therefore, I cannot provide an answer with certainty. [1], [2], [3], [4] do not contain any information about the maximum context length supported by GPT-4."
+   },
+   {
+    "id": "ex0207",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Cuánto cuesta una GPU A100 en AWS por hora?",
+    "answer": "The context does not directly provide the hourly cost of a GPU A100 in AWS. However, it does provide the cost per million output tokens for different GPU nodes, including the cost for a g4dn.xlarge instance which is mentioned as a type of instance that can run an A100 GPU. Based on the table in the context, the cost for one million output tokens for a g4dn.xlarge instance is $2.90 per hour. To find the hourly cost, we can divide this cost by the number of output tokens produced per hour.\n\nAssuming that one output token is produced per second, then one million output tokens are produced in one hour. Therefore, the hourly cost of a g4dn.xlarge instance with an A100 GPU is $2.90 per hour.\n\n[1] docs/cost-comparison.md - Cost (GPU node only)\n\nPassage used: \"| Concurrent requests | Per 1M output tokens (on-demand) | Per 1M output tokens (spot) | Per 1,000 requests (on-demand) | Per 1,000 requests ("
+   },
+   {
+    "id": "ex0228",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿En qué año llegó Cristóbal Colón a América?",
+    "answer": "The context does not provide information about the llm-platform-on-eks project or the specific question being asked about the project. The context only discusses the results of various tests related to the project, including the impact of using EBS snapshots to reduce cold starts and the performance of Karpenter and KEDA. Therefore, I cannot answer the question using only the provided context."
+   },
+   {
+    "id": "ex0229",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Por qué el cielo es azul?",
+    "answer": "Based on the context provided, the issue is related to the retry settings in the `router_settings` of the LiteLLM service running on Amazon EKS (Elastic Kubernetes Service). The context shows that a significant amount of time (around 7.5 seconds) was spent on retries when the backend was down, which is causing delays in the overall request processing time.\n\nThe fix for this issue is to reduce the number of retries or adjust the retry policy. In the context, it is shown that setting `num_retries: 0` in the EKS configuration results in much faster response times (0.05 seconds for the second request and 0.04 seconds for the third request). Additionally, setting `num_retries: 2` and `retry_policy: {InternalServerErrorRetries: 0}` results in faster response times as well (5.7 seconds for the second request and 4.5 seconds for the third request).\n\nTherefore, the fix for this issue is to adjust the retry settings in the `router_settings` of the LiteLLM service to reduce the number of retries or adjust the retry policy to improve the overall request processing time"
+   },
+   {
+    "id": "ex0234",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Qué ejercicios me recomiendas para correr un maratón?",
+    "answer": "I'm sorry, the context provided does not contain any information related to running marathons or exercises. The context only includes instructions for setting up and managing an LLM-platform-on-EKS project using various scripts and commands. [1], [2], [3], [4]"
+   },
+   {
+    "id": "ex0240",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Qué idiomas se hablan en Suiza?",
+    "answer": "The context does not directly answer the question \"What languages are spoken in Switzerland?\" However, based on the information provided, we can see that in the sixth EKS run on 2026-11-02, Qwen answered 4 out of 7 Spanish questions correctly, while Mistral answered none. This suggests that Qwen may be better at handling Spanish questions than Mistral. However, it's important to note that the context does not provide enough information to definitively answer the question.\n\n[1] docs/retrieval-eval.md - Mistral-7B vs Qwen2.5-7B (sixth EKS run, 2026-11-02)\n[2] docs/retrieval-eval.md - First judged run on EKS (2026-10-26)\n[3] docs/retrieval-eval.md - Results\n[4] docs/retrieval-eval.md - Results (Table)"
+   },
+   {
+    "id": "ex0300",
+    "lang": "en",
+    "answerable": true,
+    "question": "What issue was observed with Spanish questions during the fourth EKS run spot check of the RAG service?",
+    "answer": "Spanish questions retrieved worse during the fourth EKS run spot check of the RAG service. [1]\n\nThere were 0/7 Spanish answers in the first judged run on EKS (2026-10-26). [2]\n\nSwitching to a multilingual embedding model took a hit@4 from 0.40 to 0.80 for Spanish questions in a real EKS run. [3]\n\nThe eighth EKS run (2026-11-17) showed that the adapter fixes the language of Spanish questions but doesn't make answers more faithful. [4]\n\nTherefore, the issue observed with Spanish questions during the fourth EKS run spot check of the RAG service was that they retrieved worse than English questions."
+   },
+   {
+    "id": "ex0301",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Cuántas de las 6 preguntas seleccionadas a mano respondió mal o incompletamente el servicio RAG en la cuarta ejecución en EKS?",
+    "answer": "I don't have enough information from the context to answer that question directly. However, I can provide some related information:\n\nFrom the context, we know that in the fourth run on EKS, Mistral-7B answered 30 out of 35 questions correctly and faithfully, with 5 questions declined. However, we don't have specific information about which questions were declined or answered incorrectly.\n\nTherefore, I cannot directly answer the question about how many of the 6 selected questions were answered incorrectly or incompletely by the RAG service in the fourth run on EKS.\n\nHowever, we do know that Mistral-7B answered 5 questions incorrectly or incompletely out of a total of 35 questions. So, if the 6 selected questions were among the 35 questions, then at least 1 of those questions was answered incorrectly or incompletely by the RAG service. But we don't have enough information to determine the exact number.\n\n[1] and [2] provide information about the performance of Mistral-7B on RAG in the fourth run on EKS, but they don't contain specific information about"
+   },
+   {
+    "id": "ex0302",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué se descubrió sobre el desempeño del servicio RAG al responder preguntas en español en la cuarta ejecución en EKS?",
+    "answer": "The context does not directly answer the question about the performance of the RAG service in responding to Spanish questions in the fourth EKS run. However, we can infer that the performance improved from 0/14 answered questions to 14/14 based on the information in passage [2]. Therefore, the answer to the question would be that 14 Spanish questions were answered correctly in the fourth EKS run. [1], [2]\n\nPassage [1] provides information about the evaluation results of the RAG service in the fourth EKS run, but it does not specifically mention the number of Spanish questions answered. Passage [2], on the other hand, mentions that Spanish questions were answered in Spanish during the EKS run, but it does not provide an exact number. However, we can infer that all 14 Spanish questions were answered correctly based on the information in passage [2] about the improvement in performance.\n\nTherefore, the answer is: In the fourth EKS run, all 14 Spanish questions were answered correctly by the RAG service. [1], [2]"
+   },
+   {
+    "id": "ex0303",
+    "lang": "en",
+    "answerable": false,
+    "question": "What role does Qdrant play in the RAG layer, and how is its image handled in terms of security?",
+    "answer": "Qdrant is not explicitly mentioned in the context provided regarding the RAG layer and its image handling in terms of security. The context focuses on the RAG service on EKS, its image building, signing, and admission into the cluster using Kyverno. It also discusses the use of Mistral-7B for answer generation through LiteLLM. Therefore, based on the given context, it is not possible to determine the role of Qdrant in the RAG layer or how its image is handled in terms of security."
+   },
+   {
+    "id": "ex0304",
+    "lang": "en",
+    "answerable": true,
+    "question": "Which tools are used for the Security layer of the platform, and what does this layer demonstrate?",
+    "answer": "The Security layer of the platform uses the following tools: Trivy, Checkov, Kyverno, and GitLeaks. This layer demonstrates the implementation of security policies and practices in the platform, including vulnerability scanning, infrastructure security checks, container image security, and GitHub code security. [1], [2]"
+   },
+   {
+    "id": "ex0305",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Por qué se usa LiteLLM en la capa de Model Gateway y qué concepto de AI Platform Engineering ilustra?",
+    "answer": "LiteLLM is used in the model gateway layer because it is responsible for handling and routing the inference requests to the appropriate model, as well as providing features like authentication, router, and cost observability [1]. This setup demonstrates the concept of Model Serving and Model Management in AI Platform Engineering, where models are deployed, managed, and served at scale [1]. The use of GitOps patterns like Terraform and Argo CD for infrastructure and application deployment and management further illustrates this concept. Additionally, the automatic scaling of the GPU node based on the usage of the model and the tracing of the inference requests to monitor and analyze the performance and cost of the models are other important aspects of AI Platform Engineering that are addressed in this project."
+   },
+   {
+    "id": "ex0306",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Qué herramientas se usan en la capa de Cost observability y qué aspectos de FinOps demuestran?",
+    "answer": "The tools used in the cost observability layer include Prometheus for monitoring and collecting metrics, and Tempo for tracing. The aspects of FinOps (Financial Operations) demonstrated in the project are the ability to keep the GPU warm to reduce costs, the use of spot capacity when available, and the tracking of costs in real-time using a Grafana dashboard. [1], [2]\n\nThe cost monitoring is done using Prometheus, which is shared between autoscaling and observability. The metrics are queried by KEDA's `ScaledObject` and vLLM exposes native Prometheus metrics. LiteLLM also needs to expose its `/metrics` endpoint to feed the cost comparison documentation. [1]\n\nTracing is done using Tempo, which is a Grafana datasource. The RAG API and LiteLLM send OpenTelemetry spans over OTLP/HTTP to Tempo. [4]\n\nThe cost comparison documentation shows the cost savings of using spot capacity and keeping the GPU warm. The Grafana dashboard computes both sides of the cost comparison live. [2]\n\nThere is also a mention of OpenCost, which is inf"
+   }
+  ],
+  "adapter": [
+   {
+    "id": "ex0000",
+    "lang": "en",
+    "answerable": true,
+    "question": "In the fourth EKS run spot check, how many of the 6 hand-picked questions did the RAG service answer correctly?",
+    "answer": "The fourth EKS run answered 4 of 6 hand-picked questions correctly [1]."
+   },
+   {
+    "id": "ex0001",
+    "lang": "en",
+    "answerable": true,
+    "question": "What issue was observed with Spanish questions during the fourth EKS run spot check of the RAG service?",
+    "answer": "Spanish questions retrieved worse than English ones, missing one fact that was in the docs [1]."
+   },
+   {
+    "id": "ex0002",
+    "lang": "en",
+    "answerable": false,
+    "question": "Why was a new measurement and CI gate introduced for retrieval evaluation instead of relying on the earlier spot check?",
+    "answer": "The passages don't explain why a new measurement and CI gate were introduced instead of relying on the earlier spot check."
+   },
+   {
+    "id": "ex0003",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Cuántas de las 6 preguntas seleccionadas a mano respondió mal o incompletamente el servicio RAG en la cuarta ejecución en EKS?",
+    "answer": "En la cuarta ejecución en EKS, el servicio RAG respondió mal o incompletamente a 1 de las 6 preguntas seleccionadas a mano [4]."
+   },
+   {
+    "id": "ex0004",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Para qué sirve la nueva compuerta (gate) en CI relacionada con la evaluación de retrieval del servicio RAG?",
+    "answer": "La nueva compuerta (gate) en CI relacionada con la evaluación de retrieval del servicio RAG sirve para mantener la calidad de la evaluación, ya que mantiene el rendimiento de hit@k y MRR por encima de un umbral mínimo (0.83 y 0.72, respectivamente) [2]. Si cualquier métrica cae por debajo de ese umbral, el `rag-image` job falla y no publica el modelo [2][3]. Esto permite mantener la calidad de la evaluación y evitar que regrese, ya que cada cambio en los docs re-ranks un poco la evaluación, por lo que cada mínimo permite una sola pregunta fallida [2]."
+   },
+   {
+    "id": "ex0005",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué se descubrió sobre el desempeño del servicio RAG al responder preguntas en español en la cuarta ejecución en EKS?",
+    "answer": "Se descubrió que las preguntas en español se respondían peor que las en inglés, con un hit@4 de 0.40 en español contra 0.70 en inglés, y que las respuestas en español eran traducidas al inglés [1][4]."
+   },
+   {
+    "id": "ex0006",
+    "lang": "en",
+    "answerable": true,
+    "question": "In the third run (2026-10-14), how long did it take from request to first vLLM answer when using Karpenter with no image cache versus with a snapshot?",
+    "answer": "The passages don't contain this information."
+   },
+   {
+    "id": "ex0007",
+    "lang": "en",
+    "answerable": true,
+    "question": "What change allowed the EC2 volume's provisioned initialization rate to actually be applied in the third cost comparison run (2026-10-14)?",
+    "answer": "The change was switching from a managed node group + Cluster Autoscaler to Karpenter, which builds each launch from the EC2NodeClass and thus allows the data volume's provisioned initialization rate to reach EC2 [2]."
+   },
+   {
+    "id": "ex0008",
+    "lang": "en",
+    "answerable": true,
+    "question": "What provisioned initialization rate and percentage were verified on the data volume in the third cost comparison run?",
+    "answer": "The data volume's provisioned initialization rate was verified to be 300 MiB/s, 100% before vLLM needed it (`InitializationType: provisioned-rate`) [4]."
+   },
+   {
+    "id": "ex0009",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Cuánto tardó el pull de la imagen cuando no había caché frente a cuando ya estaba en disco, en la tercera ejecución (2026-10-14)?",
+    "answer": "En la tercera ejecución (2026-10-14) el pull de la imagen fue 0 (ya estaba en disco), porque se había creado el volumen de datos de los nodos GPU a partir de una copia de snapshot de la imagen vLLM ya pullada (Bottlerocket GPU nodes, `scripts/build-gpu-image-cache.sh`) [1]."
+   },
+   {
+    "id": "ex0010",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Cuánto tiempo tardó KEDA en detectar la solicitud en cada uno de los tres escenarios de la tercera ejecución (2026-10-14)?",
+    "answer": "En la tercera ejecución (2026-10-14), KEDA tardó 41 s en detectar la solicitud sin caché, 45 s con una snapshot (1), y 22 s con una snapshot (2) [4]."
+   },
+   {
+    "id": "ex0011",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué componente reemplazó al managed node group junto con Cluster Autoscaler para aprovisionar los nodos GPU en la tercera ejecución (2026-10-14)?",
+    "answer": "Karpenter (`k8s/karpenter/`) reemplazó al managed node group + Cluster Autoscaler para aprovisionar los nodos GPU en la tercera ejecución (2026-10-14) [4]."
+   },
+   {
+    "id": "ex0012",
+    "lang": "en",
+    "answerable": true,
+    "question": "How many layers make up the llm-platform-on-eks project, and what is the main tool used in each one?",
+    "answer": "The project has 5 layers:\n\n1. Serving: vLLM + KEDA, which demonstrates MLOps: deploying and autoscaling an LLM on K8s [2].\n2. Model Gateway: LiteLLM, which demonstrates AI Platform Engineering: a unified multi-provider proxy [2].\n3. RAG: Qdrant + own Python service, which demonstrates Ingestion Job and Q&A API over the project's own docs, image signed in CI [2].\n4. Cost observability: Prometheus + Grafana + Tempo + OpenCost/Kubecost, which demonstrates FinOps applied to AI: cost per request/token, one trace per RAG question [2].\n5. Security: Trivy, Checkov, Kyverno, GitLeaks, which demonstrates DevSecOps: shift-left in the pipeline and in the cluster [2]."
+   },
+   {
+    "id": "ex0013",
+    "lang": "en",
+    "answerable": true,
+    "question": "What role does Qdrant play in the RAG layer, and how is its image handled in terms of security?",
+    "answer": "In the RAG layer, Qdrant is the search engine used to index the project's own docs (README, CLAUDE.md, docs/) and provide the API (`POST /ask`) with answers [1][2]. The image is built with fastembed for CPU-side embeddings, and the model is baked into the image and pods run with `HF_HUB_OFFLINE=1` [2]. On EKS, the ingestion Job is an Argo CD Sync hook, and `require-image-signature.yaml` restricts the image to `ghcr.io/yack300/*` only with a signature from this repo's ci.yml on main [2]."
+   },
+   {
+    "id": "ex0014",
+    "lang": "en",
+    "answerable": true,
+    "question": "Which tools are used for the Security layer of the platform, and what does this layer demonstrate?",
+    "answer": "The Security layer uses Trivy, Checkov, Kyverno, and GitLeaks [1][3]. Trivy and Checkov are used for shift-left security in the pipeline, while Kyverno and GitLeaks are used for security in the cluster [2]. This layer demonstrates DevSecOps, with security checks happening both in the pipeline and in the cluster [1]."
+   },
+   {
+    "id": "ex0015",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Por qué se usa LiteLLM en la capa de Model Gateway y qué concepto de AI Platform Engineering ilustra?",
+    "answer": "Porque LiteLLM es un proxy unificado que se usa en la capa de Model Gateway para gestionar las llamadas a múltiples proveedores de modelos, ilustrando el concepto de AI Platform Engineering, que consiste en proporcionar una interfaz unificada para acceder a múltiples proveedores de modelos [4]."
+   },
+   {
+    "id": "ex0016",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué combinación de herramientas se encarga de la capa de Serving y qué parte de MLOps representa?",
+    "answer": "La capa de Serving está encargada por vLLM y KEDA [1][2]. vLLM es el modelo de lenguaje de lenguaje masivo (LLM) que se ejecuta en un nodo GPU de Mistral-7B AWQ, y KEDA es el autoscaler de Kubernetes que permite desplegar y escalar automáticamente el LLM en K8s [1]. Por lo tanto, la combinación de vLLM y KEDA representa la parte de MLOps que se encarga de deployar y autoescalar el LLM en Kubernetes (EKS) [1][2]."
+   },
+   {
+    "id": "ex0017",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué herramientas se usan en la capa de Cost observability y qué aspectos de FinOps demuestran?",
+    "answer": "En la capa de Cost observability se usan Prometheus, Grafana, Tempo y OpenCost/Kubecost [2]. Esto demuestra FinOps aplicado a AI, ya que se miden costos por solicitud/token y se genera una sola traza por pregunta de RAG [1]."
+   },
+   {
+    "id": "ex0159",
+    "lang": "en",
+    "answerable": false,
+    "question": "How do Azure Functions bill for execution time?",
+    "answer": "I don't know; the passages don't cover Azure Functions."
+   },
+   {
+    "id": "ex0166",
+    "lang": "en",
+    "answerable": false,
+    "question": "How do I reverse a string in JavaScript?",
+    "answer": "The passages don't contain JavaScript code, so I don't know."
+   },
+   {
+    "id": "ex0167",
+    "lang": "en",
+    "answerable": false,
+    "question": "How do I set up a VPN on Windows 11?",
+    "answer": "The passages don't cover VPN setup, so I can't answer that."
+   },
+   {
+    "id": "ex0181",
+    "lang": "en",
+    "answerable": false,
+    "question": "How often should I water a cactus?",
+    "answer": "The passages don't contain gardening advice, so I don't know."
+   },
+   {
+    "id": "ex0184",
+    "lang": "en",
+    "answerable": false,
+    "question": "What context length does GPT-4 support?",
+    "answer": "I don't know; the passages don't mention GPT-4."
+   },
+   {
+    "id": "ex0207",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Cuánto cuesta una GPU A100 en AWS por hora?",
+    "answer": "Los pasajes no mencionan una GPU A100, así que no lo sé."
+   },
+   {
+    "id": "ex0228",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿En qué año llegó Cristóbal Colón a América?",
+    "answer": "Los pasajes no mencionan Cristóbal Colón, así que no lo sé."
+   },
+   {
+    "id": "ex0229",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Por qué el cielo es azul?",
+    "answer": "Los pasajes no tratan esa pregunta, así que no lo sé."
+   },
+   {
+    "id": "ex0234",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Qué ejercicios me recomiendas para correr un maratón?",
+    "answer": "Los pasajes no contienen información sobre maratones, así que no puedo responder eso."
+   },
+   {
+    "id": "ex0240",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Qué idiomas se hablan en Suiza?",
+    "answer": "Los pasajes no mencionan Suiza, así que no lo sé."
+   },
+   {
+    "id": "ex0300",
+    "lang": "en",
+    "answerable": true,
+    "question": "What issue was observed with Spanish questions during the fourth EKS run spot check of the RAG service?",
+    "answer": "Spanish questions retrieved worse than English ones, answering only 0/7 correctly [1]."
+   },
+   {
+    "id": "ex0301",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Cuántas de las 6 preguntas seleccionadas a mano respondió mal o incompletamente el servicio RAG en la cuarta ejecución en EKS?",
+    "answer": "Los pasajes no mencionan una cuarta ejecución en EKS, así que no puedo responder eso."
+   },
+   {
+    "id": "ex0302",
+    "lang": "es",
+    "answerable": true,
+    "question": "¿Qué se descubrió sobre el desempeño del servicio RAG al responder preguntas en español en la cuarta ejecución en EKS?",
+    "answer": "En la cuarta ejecución en EKS, se descubrió que las preguntas en español no eran respondidas en español, sino que el modelo respondía en inglés, por lo que se cambió la política para que las preguntas españolas terminasen con \"Responde en español.\" [1]"
+   },
+   {
+    "id": "ex0303",
+    "lang": "en",
+    "answerable": false,
+    "question": "What role does Qdrant play in the RAG layer, and how is its image handled in terms of security?",
+    "answer": "Qdrant is not mentioned in the passages, so I don't know its role in the RAG layer or how its image is handled in terms of security."
+   },
+   {
+    "id": "ex0304",
+    "lang": "en",
+    "answerable": true,
+    "question": "Which tools are used for the Security layer of the platform, and what does this layer demonstrate?",
+    "answer": "The Security layer of the platform uses Trivy, Checkov, Kyverno, and GitLeaks [2]. Trivy and Checkov are used for static analysis and vulnerability scanning, while Kyverno is used for admission policies and GitLeaks is used for secret detection [1]. This layer demonstrates the use of these tools to secure the platform, including the RAG service, by scanning for vulnerabilities, enforcing policies, and detecting secrets [2]."
+   },
+   {
+    "id": "ex0305",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Por qué se usa LiteLLM en la capa de Model Gateway y qué concepto de AI Platform Engineering ilustra?",
+    "answer": "Porque LiteLLM es un servicio de Python (RAG) que se encarga de la ingestión y la API /ask, y también se usa como Model Gateway porque es el que recibe las llamadas de API y las traza con OpenTelemetry (`traceparent` header) [1][2]. Esto ilustra el concepto de AI Platform Engineering de \"servicio de modelo\" (Model Server) que recibe las llamadas de API y las trata, y \"Model Gateway\" que recibe las llamadas de API y las distribuye a los servicios de modelo correspondientes [1]."
+   },
+   {
+    "id": "ex0306",
+    "lang": "es",
+    "answerable": false,
+    "question": "¿Qué herramientas se usan en la capa de Cost observability y qué aspectos de FinOps demuestran?",
+    "answer": "En la capa de Cost observability se usa Prometheus (`k8s/observability/prometheus-grafana-values.yaml`) para scrapear métricas de costo/latencia a partir de los `ServiceMonitor`s en `k8s/observability/servicemonitors.yaml`, que recogen métricas nativas de vLLM y LiteLLM [1]. El gráfico de costos se calcula en tiempo real con la variable `k8s/observability/grafana-dashboard-llm-cost.yaml` [2]. También se usa OpenTelemetry (`rag/tracing.py`) para enviar spans a Tempo (`k8s/argocd/apps/tempo.yaml`), un datasource de Grafana [4].\n\nEn cuanto a FinOps, el proyecto demuestra que mantener un tráfico sostenido con suficiente concurrencia para batches mantiene el GPU caliente, y que la capacidad spot reduce el costo aproximadamente en la mitad cuando está disponible [2]. También se"
+   }
+  ]
+ }
+}

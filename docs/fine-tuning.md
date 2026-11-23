@@ -80,7 +80,7 @@ The rising validation loss in epoch 2 and the near misses point the same
 way: one epoch and more examples whose right answer is to decline when the
 passage is close but not there. Nothing gets served without the judge's
 `correct` and `faithful` checks on the live RAG service, which need API
-credit; the adapter waits in S3 as version 1, alias `candidate`.
+credit; the adapter waited in S3 until the ninth run judged it (below).
 
 **Found on the way:**
 
@@ -100,3 +100,89 @@ credit; the adapter waits in S3 as version 1, alias `candidate`.
   shows `rag` and `training` as OutOfSync while Healthy; cosmetic.
 
 Full results, including every generation: `apps/finetune/results/2026-11-17-mistral-lora-2ep.json`.
+
+## Serving adapters and the promotion gate
+
+An adapter is served by the same vLLM as the base model: an init container
+downloads each one from the artifacts bucket at every start (read-only Pod
+Identity; an adapter loaded at runtime wouldn't survive scale-to-zero), and
+`--enable-lora` exposes it under its own model name, which LiteLLM routes
+and KEDA counts as demand. The RAG API answers with `CHAT_MODEL`, and with
+any model in `ALLOWED_MODELS` when a request asks, so `rag.answers --model`
+puts base and candidates through the same retrieval and the same 66
+questions. The judge grades each file and `judge/promote.py` decides:
+
+| Rule | |
+|---|---|
+| target (`language`) | the candidate passes strictly more checks |
+| `correct`, `faithful`, `declines` | at most one check fewer (re-runs of the same model move them by 2-3) |
+| ungraded checks | none: re-run them first |
+
+Promoting is a commit: `CHAT_MODEL` in `k8s/rag/api.yaml`, and a
+claude-fallback for the promoted adapter so a cold start still answers.
+Candidates under evaluation get no fallback, so their answers can't come
+from Claude.
+
+## Ninth EKS run (2026-11-23): two candidates, one promoted
+
+**v2** was trained in this run: one epoch instead of two (validation loss
+had risen in the second), on dataset v2: the first 247 examples plus 60
+near misses, questions already answered asked again without the sections
+their reference answer cited (44 decline, 16 answer from a passage that
+still has it). 19 minutes on a T4, on spot this time; validation loss 0.700.
+On its 35 validation examples, the same heuristics as before:
+
+| | Mistral-7B | v2 |
+|---|---|---|
+| Spanish questions answered in Spanish | 0/18 | 18/18 |
+| Unanswerable questions declined | 10/16 | 13/16 |
+| ...of them, near misses | 1/4 | 2/4 |
+| Answerable questions refused | 1/19 | 1/19 |
+
+Then vLLM served the base model, **v1** (the eighth run's adapter) and v2
+side by side on one GPU (LoRA on the AWQ base: vLLM loaded both), and each
+answered the 66 evaluation questions through the live RAG service, all 66
+from the requested model. The judge (calibrated first: 0 disagreements on
+14 known verdicts) graded the three:
+
+| Judge | Mistral-7B | v1 (2 epochs) | v2 (1 epoch, near misses) |
+|---|---|---|---|
+| correct | 35/56 | 36/56 | 33/56 |
+| faithful | 35/56 | **43/56** | 44/56 |
+| declines (off-topic) | 6/10 | **10/10** | 10/10 |
+| language | 51/66 | **66/66** | 66/66 |
+| ...Spanish questions in Spanish | 0/15 | **15/15** | 15/15 |
+| **Gate vs the base model** | | **promote** | correct −2: don't |
+| Answer latency, p50 | 2.9 s | 4.4 s | 4.2 s |
+
+**v1 is promoted**: `rag-behavior-v1` is now the RAG API's model
+([gate output](../apps/rag/eval/answers/2026-11-23-promotion.md)). It fixes
+the language without losing correctness, and the judge finds it more
+faithful than the base model on the live set (+8) and declining every
+off-topic question. That contradicts my reading of its validation answers
+after the eighth run (about 5 of 16 with an invented fact): a different
+set, and 16 answers read by one person against 56 graded by a calibrated
+judge. Deciding with the gate rather than by eye is the point of having one.
+
+**v2 is not**: the near misses made it one check more faithful and two
+less correct, beyond the tolerance. It declines more readily, including
+some questions it could answer; and near misses are still its weak spot (2
+of 4 on validation). It's no longer served.
+
+**The cost of serving LoRA**: answers took ~1.4 s longer at p50 than the
+base model's, one request at a time on a T4. Most likely the adapters' extra
+computation, but it wasn't profiled.
+
+**Found on the way:**
+
+- vLLM's Deployment is created at 0 replicas when nothing asks for it
+  (KEDA scales it down before a pod exists), so the GPU was free for
+  training first; I waited 30 minutes for a vLLM pod that wasn't coming.
+- The judge returned no or malformed output on the same two checks twice
+  in a row; a third run graded them. "Re-run the ungraded checks" can take
+  more than one re-run.
+- In zsh, an unquoted `$args` holding `--model rag-behavior-v1` is one
+  argument, not two: `--model=…` avoids it.
+
+Full results: `apps/finetune/results/2026-11-23-mistral-lora-v2-1ep.json`;
+answers and judge summaries: `apps/rag/eval/answers/2026-11-23-*`.
