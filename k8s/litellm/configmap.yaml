@@ -28,6 +28,11 @@ data:
           model: openai/rag-behavior-v1
           api_base: http://vllm-inference.llm-platform.svc.cluster.local:8000/v1
           api_key: "no-real-key-needed-locally"
+      - model_name: rag-behavior-v2
+        litellm_params:
+          model: openai/rag-behavior-v2
+          api_base: http://vllm-inference.llm-platform.svc.cluster.local:8000/v1
+          api_key: "no-real-key-needed-locally"
 
       # External provider used as fallback while vLLM is scaled to 0 or
       # cold-starting (see k8s/vllm/keda-scaledobject.yaml), and as the

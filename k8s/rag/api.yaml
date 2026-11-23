@@ -38,7 +38,7 @@ spec:
             # Models /ask may be asked for instead of local-mistral: the LoRA
             # adapters vLLM serves (k8s/vllm/deployment.yaml), for evaluation.
             - name: ALLOWED_MODELS
-              value: rag-behavior-v1
+              value: rag-behavior-v1,rag-behavior-v2
             # Traces to Tempo (rag/tracing.py; off when unset, as on kind,
             # where scripts/deploy-local.sh drops this variable).
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
