@@ -119,7 +119,11 @@ borrower. Shares nobody held are owed by the team whose quota they are.
   that cost $0.40. Its source has the correction (`pkg/costmodel/metrics.go`
   scales the allocation by GPUs/shares) behind
   `verr != nil && err != nil`, that is, only when reading both numbers
-  *failed*; the condition looks inverted. Not reported upstream yet.
+  *failed*: the condition was inverted. Already fixed upstream
+  ([opencost#4173](https://github.com/opencost/opencost/pull/4173), merged
+  2026-11-13) but in no release yet: 1.121.4 is three days older. The fix
+  still needs those two labels on the nodes, and Bottlerocket runs no GPU
+  Feature Discovery, so the GPU NodePool will have to set them.
 - **The report adds up to the real cost** because it takes only the GPU
   hours from OpenCost, and the nodes' uptime and price from Prometheus.
 - **Short pods lose time.** A pod counts up to about a minute less than it

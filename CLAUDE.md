@@ -222,8 +222,8 @@ Prometheus metrics; LiteLLM needs `litellm_settings.success_callback`/
 `failure_callback: ["prometheus"]` set to expose its `/metrics` endpoint — this is
 what feeds `docs/cost-comparison.md`. OpenCost (`k8s/observability/opencost-values.yaml`)
 reads that Prometheus and needs its own ServiceMonitor there. Don't quote its GPU
-costs: it bills each time-sliced share as a whole GPU, even with GPU Feature
-Discovery's labels on the node. `scripts/gpu-chargeback.py` takes only its GPU hours
+costs: 1.121.4 bills each time-sliced share as a whole GPU, even with GPU Feature
+Discovery's labels on the node (fixed after it, opencost#4173). `scripts/gpu-chargeback.py` takes only its GPU hours
 and splits the nodes' price by shares held (docs/gpu-teams.md).
 
 **Scale-to-zero spans three layers.** The ScaledObject has three triggers:
