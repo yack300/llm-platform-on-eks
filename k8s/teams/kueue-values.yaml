@@ -1,0 +1,65 @@
+# Kueue (registry.k8s.io/kueue/charts/kueue): admits the teams' GPU pods
+# against their quotas (queues.yaml). Two teams share the GPUs:
+#
+#   product   llm-platform namespace: vLLM serving the RAG
+#   research  training namespace: fine-tuning workflows (Argo Workflows)
+#
+# Only those two namespaces are managed. Kueue's pod webhook fails closed
+# (failurePolicy: Fail): with the chart's default selector, every pod in the
+# cluster outside kube-system would need Kueue up to be created at all.
+controllerManager:
+  manager:
+    resources:
+      # The chart asks for 500m: half of what the platform NodePool's
+      # 4-CPU limit leaves for add-ons.
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+managerConfig:
+  controllerManagerConfigYaml: |-
+    # The chart's default configuration, plus the settings after clientConnection.
+    apiVersion: config.kueue.x-k8s.io/v1beta2
+    kind: Configuration
+    health:
+      healthProbeBindAddress: :8081
+    metrics:
+      bindAddress: :8443
+    webhook:
+      port: 9443
+    leaderElection:
+      leaderElect: true
+      resourceName: c1f6bfd2.kueue.x-k8s.io
+    controller:
+      groupKindConcurrency:
+        Job.batch: 5
+        Pod: 5
+        Workload.kueue.x-k8s.io: 10
+        LocalQueue.kueue.x-k8s.io: 5
+        Cohort.kueue.x-k8s.io: 1
+        ClusterQueue.kueue.x-k8s.io: 5
+        ResourceFlavor.kueue.x-k8s.io: 1
+    clientConnection:
+      qps: 300
+      burst: 500
+    # Only pods with a kueue.x-k8s.io/queue-name label are queued (vLLM's
+    # Deployment, the fine-tuning workflow's pods); the rest of the two
+    # namespaces (LiteLLM, RAG, Qdrant, MLflow) runs as before.
+    manageJobsWithoutQueueName: false
+    managedJobsNamespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [llm-platform, training]
+    # Quotas are about GPUs: a pod's CPU and memory are left to the
+    # scheduler and Karpenter, so the queues don't need to mirror them.
+    resources:
+      excludeResourcePrefixes: ["cpu", "memory", "ephemeral-storage"]
+    integrations:
+      frameworks:
+        - "batch/job"
+        - "pod"        # Argo Workflows' pods
+        - "deployment" # vLLM

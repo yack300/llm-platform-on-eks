@@ -8,6 +8,10 @@ metadata:
   namespace: llm-platform
   labels:
     app: vllm-inference
+    # The product team's GPU queue (Kueue, k8s/teams/queues.yaml): each
+    # replica is admitted against the team's quota, taking back any share
+    # research borrowed.
+    kueue.x-k8s.io/queue-name: product
 spec:
   # No replicas field: KEDA (keda-scaledobject.yaml) owns the replica count,
   # including 0. A fixed value here would make Argo CD's self-heal undo every

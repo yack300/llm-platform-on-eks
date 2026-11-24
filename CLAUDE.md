@@ -81,6 +81,11 @@ python3 apps/rag/eval/judge/promote.py --base <base-results.json> --candidate <c
 docker build -f apps/finetune/Dockerfile -t llm-platform-finetune:dev .
 docker run --rm --user 0 -v "$PWD/apps/finetune":/src -w /src llm-platform-finetune:dev sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider tests'
 ./scripts/finetune-local.sh
+# Kueue's GPU queues on their own kind cluster (llm-teams-local), fake GPUs:
+# research borrows product's share, product takes it back (docs/gpu-teams.md)
+./scripts/teams-local.sh
+# Kyverno policy tests (pods that must pass or be denied; CI runs them too)
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 test tests/kyverno/
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
 # and init + validate in terraform/bootstrap (see the workflow's terraform job)
 
@@ -178,6 +183,20 @@ differences: only the production config defines the `claude-fallback` model and
 `fallbacks`, since there's no Anthropic key locally (and so production sets
 `num_retries: 0`, falling back at once instead of retrying a scaled-to-zero
 vLLM), and the `otel` callback, since kind runs no Tempo.
+
+**GPU teams (Kueue, `k8s/teams/`, docs/gpu-teams.md).** Two teams share the GPUs:
+product (`llm-platform`, vLLM; the on-demand GPU, reclaims it from borrowers) and
+research (`training`, the fine-tuning workflows; the spot GPU, borrows product's idle
+share). Only pods labeled `kueue.x-k8s.io/queue-name` are queued: vLLM's Deployment
+and the WorkflowTemplate's `podMetadata`; Kyverno's `require-gpu-queue` denies a GPU
+pod without the label in those namespaces. Kueue's webhooks fail closed, so
+`managedJobsNamespaceSelector` in `kueue-values.yaml` must keep listing only the
+teams' namespaces: widening it makes pod creation there depend on Kueue being up.
+Quotas count `nvidia.com/gpu` only (CPU/memory excluded) and its flavors pin pods to a
+Karpenter capacity type through the node selector. An evicted workflow step is
+recreated by Argo with the same name and starts over (no retry involved). Kueue's
+finalizers on queued pods and Workloads are why `teardown-eks.sh` empties the queues
+(vLLM's app, the workflows) before deleting root.
 
 **Terraform remote state has its own bootstrap module.** `terraform/bootstrap/`
 creates the S3 bucket (native S3 locking via `use_lockfile`, no DynamoDB) for

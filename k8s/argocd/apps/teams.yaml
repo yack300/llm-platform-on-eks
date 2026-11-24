@@ -1,0 +1,27 @@
+# The teams' GPU queues (k8s/teams/queues.yaml). Wave 2: needs Kueue's CRDs
+# (wave 0) and the llm-platform and training namespaces (wave 1), whose
+# LocalQueues it creates.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: teams
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kueue-system
+  source:
+    repoURL: https://github.com/yack300/llm-platform-on-eks.git
+    targetRevision: main
+    path: k8s/teams
+    directory:
+      include: "queues.yaml"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

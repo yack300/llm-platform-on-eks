@@ -1,0 +1,25 @@
+# kyverno test tests/kyverno/  (CI: kyverno job)
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-gpu-queue
+policies:
+  - ../../../k8s/security/kyverno-policies/require-gpu-queue.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: require-gpu-queue
+    rule: gpu-pods-need-a-queue
+    resources: [gpu-with-queue]
+    kind: Pod
+    result: pass
+  - policy: require-gpu-queue
+    rule: gpu-pods-need-a-queue
+    resources: [gpu-without-queue]
+    kind: Pod
+    result: fail
+  - policy: require-gpu-queue
+    rule: gpu-pods-need-a-queue
+    resources: [cpu-without-queue]
+    kind: Pod
+    result: skip

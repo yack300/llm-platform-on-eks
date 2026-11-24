@@ -29,6 +29,15 @@ for _ in $(seq 1 60); do
 done
 kubectl get nodeclaims 2>/dev/null || true
 
+# Kueue puts finalizers on the pods and Workloads it queues (vLLM's, the
+# workflows'), and only Kueue removes them: if its app goes first in the
+# cascade below, they block their namespaces' deletion. Empty the queues
+# while Kueue still runs.
+echo "==> Emptying the GPU queues (Kueue)..."
+kubectl -n argocd delete application vllm --ignore-not-found --timeout=10m
+kubectl -n training delete workflows --all --ignore-not-found --timeout=5m 2>/dev/null || true
+kubectl wait workloads --all -A --for=delete --timeout=5m 2>/dev/null || true
+
 echo "==> Deleting the root Application (cascades to every child Application)..."
 # Each Application carries the resources finalizer, so deleting it deletes its
 # resources first, PVCs included; the gp3 StorageClass (reclaimPolicy Delete)

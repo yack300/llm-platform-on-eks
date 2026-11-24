@@ -1,0 +1,36 @@
+# Kueue: GPU quotas and queues for the two teams sharing the GPUs
+# (k8s/teams/, docs/gpu-teams.md). Wave 0, with the other operators: its
+# CRDs must exist before the queues (wave 2).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kueue
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kueue-system
+  sources:
+    # OCI Helm chart: registry path without oci://, chart name apart
+    - repoURL: registry.k8s.io/kueue/charts
+      chart: kueue
+      targetRevision: 0.20.7
+      helm:
+        releaseName: kueue
+        valueFiles:
+          - $values/k8s/teams/kueue-values.yaml
+    - repoURL: https://github.com/yack300/llm-platform-on-eks.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # the Workload CRD (~1.4 MB) is too large for client-side apply

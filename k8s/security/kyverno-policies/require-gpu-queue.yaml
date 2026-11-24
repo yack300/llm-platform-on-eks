@@ -1,0 +1,38 @@
+# A GPU pod in the teams' namespaces must go through its team's Kueue queue
+# (k8s/teams/queues.yaml): Kueue only queues pods with a queue-name label,
+# so one without it would take a GPU outside every quota.
+#
+# Pods only (no autogen for Deployments or Jobs): the label can sit on the
+# Deployment rather than its pod template, and Kueue copies it to each pod.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-gpu-queue
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: none
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: gpu-pods-need-a-queue
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - llm-platform
+                - training
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.containers[?resources.requests.\"nvidia.com/gpu\" || resources.limits.\"nvidia.com/gpu\"] | length(@) }}"
+            operator: GreaterThan
+            value: 0
+      validate:
+        message: "Pods that request nvidia.com/gpu in llm-platform and training need a kueue.x-k8s.io/queue-name label (their team's queue)."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.labels.\"kueue.x-k8s.io/queue-name\" || '' }}"
+                operator: Equals
+                value: ""

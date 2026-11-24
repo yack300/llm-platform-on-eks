@@ -1,0 +1,90 @@
+# GPU quotas for the two teams (docs/gpu-teams.md). Units are time-sliced
+# shares of a GPU (nvidia.com/gpu): each T4 is meant to be advertised as 2
+# (time-slicing in the GPU EC2NodeClass's Bottlerocket settings, not set
+# yet: until then a node advertises 1), and the account's quota allows one
+# GPU node of each capacity type.
+#
+#   product   (llm-platform) the on-demand GPU: serving can't be
+#             interrupted by a spot reclaim
+#   research  (training) the spot GPU, plus whatever share of the on-demand
+#             GPU product isn't using, which it gives back when product
+#             needs it: Kueue evicts the borrowing pod
+#
+# Each flavor pins admitted pods to that capacity type through Karpenter's
+# label.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-on-demand
+spec:
+  nodeLabels:
+    karpenter.sh/capacity-type: on-demand
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-spot
+spec:
+  nodeLabels:
+    karpenter.sh/capacity-type: spot
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: product
+spec:
+  cohortName: gpus
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: llm-platform
+  resourceGroups:
+    - coveredResources: ["nvidia.com/gpu"]
+      flavors:
+        - name: gpu-on-demand
+          resources:
+            - name: nvidia.com/gpu
+              nominalQuota: 2
+  preemption:
+    # Take back its own quota from a borrower, whatever the priority
+    reclaimWithinCohort: Any
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: research
+spec:
+  cohortName: gpus
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: training
+  resourceGroups:
+    - coveredResources: ["nvidia.com/gpu"]
+      flavors:
+        # Its own spot GPU first; then borrow from product's on-demand one
+        - name: gpu-spot
+          resources:
+            - name: nvidia.com/gpu
+              nominalQuota: 2
+        - name: gpu-on-demand
+          resources:
+            - name: nvidia.com/gpu
+              nominalQuota: 0
+  preemption:
+    reclaimWithinCohort: Never
+    withinClusterQueue: Never
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: product
+  namespace: llm-platform
+spec:
+  clusterQueue: product
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: research
+  namespace: training
+spec:
+  clusterQueue: research

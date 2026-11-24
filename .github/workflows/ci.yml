@@ -117,6 +117,11 @@ jobs:
           docker run --rm -v "$PWD":/repo -w /repo "$KYVERNO_IMAGE" \
             apply "${policies[@]}" "${args[@]}" 2>&1 | tee kyverno.out
           ! grep -q panic kyverno.out
+      # Policies that act on pods created at run time (require-gpu-queue)
+      # have nothing to check in the manifests: their tests feed them pods
+      # that must pass and pods that must be denied.
+      - name: Policy tests
+        run: docker run --rm -v "$PWD":/repo -w /repo "$KYVERNO_IMAGE" test tests/kyverno/
 
   terraform:
     needs: [checkov, trivy-fs, gitleaks]

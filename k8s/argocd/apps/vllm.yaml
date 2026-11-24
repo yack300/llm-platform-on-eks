@@ -21,13 +21,17 @@ spec:
     path: k8s/vllm
     directory:
       exclude: "*local*"
-  # KEDA owns the replica count (including 0); don't treat it as drift.
+  # KEDA owns the replica count (including 0), and Kueue's webhook marks the
+  # pod template as queued (k8s/teams/); don't treat either as drift.
   ignoreDifferences:
     - group: apps
       kind: Deployment
       name: vllm-inference
       jsonPointers:
         - /spec/replicas
+        - /spec/template/metadata/labels/kueue.x-k8s.io~1managed
+        - /spec/template/metadata/labels/kueue.x-k8s.io~1queue-name
+        - /spec/template/metadata/annotations/kueue.x-k8s.io~1pod-suspending-parent
   syncPolicy:
     automated:
       prune: true

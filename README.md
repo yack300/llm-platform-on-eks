@@ -114,17 +114,20 @@ llm-platform-on-eks/
 │   ├── karpenter/              # NodePools + EC2NodeClasses: GPU nodes from 0, platform overflow
 │   ├── security/                # Kyverno policies + Trivy-operator config
 │   ├── observability/         # kube-prometheus-stack + Tempo values, ServiceMonitors (cost/latency)
-│   └── training/               # Argo Workflows values, fine-tuning WorkflowTemplate, MLflow
+│   ├── training/               # Argo Workflows values, fine-tuning WorkflowTemplate, MLflow
+│   └── teams/                  # Kueue values + GPU queues and quotas for the serving and training teams
 ├── .github/workflows/ci.yml   # GitHub Actions: GitLeaks + Checkov + Trivy fs -> kubeconform, Kyverno, Terraform,
 │                               # RAG image (tests, build, retrieval eval, Trivy, push + keyless cosign signing on main)
 ├── docs/
 │   ├── cost-comparison.md      # Measured throughput, latency, cost per token and scale-to-zero timings
 │   ├── retrieval-eval.md       # RAG retrieval metrics + CI baseline, answer quality judged by Claude
 │   ├── tracing.md              # One trace per RAG question (Tempo): where the time goes
-│   └── fine-tuning.md          # Behavior LoRA: pipeline, first run, what it fixed and what it didn't
+│   ├── fine-tuning.md          # Behavior LoRA: pipeline, first run, what it fixed and what it didn't
+│   └── gpu-teams.md            # Two teams sharing the GPUs: Kueue quotas, borrowing, eviction
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
     ├── finetune-local.sh       # Fine-tuning pipeline smoke test on kind (CPU, tiny model)
+    ├── teams-local.sh          # Kueue GPU queues on kind with fake GPUs: borrowing and eviction
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
     └── teardown-eks.sh         # EKS: delete apps and PVC volumes before terraform destroy
 ```

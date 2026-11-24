@@ -1,0 +1,40 @@
+# Pods for the require-gpu-queue policy's test (kyverno-test.yaml).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-with-queue
+  namespace: training
+  labels:
+    kueue.x-k8s.io/queue-name: research
+spec:
+  containers:
+    - name: main
+      image: busybox:1.37.0
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-without-queue
+  namespace: training
+spec:
+  containers:
+    - name: main
+      image: busybox:1.37.0
+      resources:
+        requests:
+          nvidia.com/gpu: "1"
+        limits:
+          nvidia.com/gpu: "1"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-without-queue
+  namespace: llm-platform
+spec:
+  containers:
+    - name: main
+      image: busybox:1.37.0
