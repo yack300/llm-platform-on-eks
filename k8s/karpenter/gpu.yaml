@@ -1,6 +1,15 @@
-# GPU capacity for vLLM, from zero. When KEDA scales vLLM 0 -> 1, the pod
-# can't be scheduled anywhere (it needs nvidia.com/gpu) and Karpenter
-# launches one of these; once the node is empty again it's removed.
+# GPU capacity, from zero, one NodePool per team's GPU (k8s/teams/queues.yaml,
+# docs/gpu-teams.md). A pod that needs nvidia.com/gpu and was admitted by
+# Kueue can't be scheduled anywhere, so Karpenter launches a node for it; once
+# the node is empty again it's removed.
+#
+#   gpu         spot, a whole T4: training (QLoRA needs ~10 GB of its 16)
+#   gpu-shared  on-demand, a T4 time-sliced in 2: vLLM and one small job
+#
+# Each is limited to 1 GPU. It's the account's quota (one g4dn.xlarge per
+# capacity type), and Karpenter doesn't know about time-slicing: it sizes the
+# shared node as 1 GPU, so without the limit two pods pending for a share
+# each would launch two nodes.
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
@@ -18,22 +27,56 @@ spec:
         - key: node.kubernetes.io/instance-type
           operator: In
           values: ["g4dn.xlarge"]
-        # Spot first (about half the price); Karpenter falls back to
-        # on-demand by itself when there's no spot capacity, which happened
-        # on both EKS runs with the managed node group (fixed to one type).
+        # About half the price. No fallback to on-demand: that GPU is the
+        # product team's, so without spot capacity training waits.
         - key: karpenter.sh/capacity-type
           operator: In
-          values: ["spot", "on-demand"]
-      # Only pods that tolerate it (vLLM) land here.
+          values: ["spot"]
+      # Only pods that tolerate it land here.
       taints:
         - key: nvidia.com/gpu
           value: present
           effect: NoSchedule
-  # Cost guard: never more than two GPUs, whatever KEDA asks for.
   limits:
-    nvidia.com/gpu: 2
+    nvidia.com/gpu: 1
   disruption:
-    # Remove a GPU node 5 minutes after its last pod (vLLM) leaves.
+    # Remove a GPU node 5 minutes after its last pod leaves.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 5m
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu-shared
+spec:
+  template:
+    metadata:
+      labels:
+        # What GPU Feature Discovery would set (Bottlerocket doesn't run it):
+        # 1 GPU shared by 2. OpenCost and scripts/gpu-chargeback.py read them.
+        nvidia.com/gpu.count: "1"
+        nvidia.com/gpu.replicas: "2"
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu-shared
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["g4dn.xlarge"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+      # Only pods that tolerate it land here.
+      taints:
+        - key: nvidia.com/gpu
+          value: present
+          effect: NoSchedule
+  limits:
+    nvidia.com/gpu: 1
+  disruption:
+    # Remove a GPU node 5 minutes after its last pod leaves.
     consolidationPolicy: WhenEmpty
     consolidateAfter: 5m
 ---
@@ -72,6 +115,47 @@ spec:
   # scripts/set-gpu-image-cache.sh since the snapshot is per account. Unlike
   # EKS managed node groups, which dropped the rate on the second EKS run,
   # Karpenter passes it through.
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 4Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+    - deviceName: /dev/xvdb
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu-shared
+spec:
+  # Same as gpu, plus time-slicing: the device plugin advertises the T4 as 2
+  # nvidia.com/gpu. Time is shared, memory isn't isolated: each pod has to
+  # limit itself (vLLM's --gpu-memory-utilization).
+  userData: |
+    [settings.kubelet-device-plugins.nvidia]
+    device-sharing-strategy = "time-slicing"
+    [settings.kubelet-device-plugins.nvidia.time-slicing]
+    replicas = 2
+    rename-by-default = false
+  amiSelectorTerms:
+    - alias: bottlerocket@v1.66.0
+  role: llm-platform-demo-karpenter-node # terraform: module.karpenter
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: llm-platform-demo
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: llm-platform-demo
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
   blockDeviceMappings:
     - deviceName: /dev/xvda
       ebs:

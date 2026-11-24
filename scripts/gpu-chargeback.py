@@ -23,19 +23,22 @@ TEAMS = {"llm-platform": "product", "training": "research"}
 # (k8s/teams/queues.yaml).
 OWNERS = {"on-demand": "product", "spot": "research"}
 CAPACITY_LABEL = "karpenter_sh_capacity_type"
+REPLICAS_LABEL = "nvidia_com_gpu_replicas"  # set by the gpu-shared NodePool
 STEP = 15  # seconds between samples when measuring how long a node lived
 
 
-def chargeback(allocations, nodes, shares):
+def chargeback(allocations, nodes):
     """What each team owes per GPU node.
 
     allocations: [{namespace, node, gpu_hours, gpu_cost}], gpu_hours counted
-    in shares, as requested. nodes: {name: {hours, price, capacity}}, price
-    being the GPU's hourly price. Returns one row per (node, team) plus the
+    in shares, as requested. nodes: {name: {hours, price, shares, capacity}},
+    price being hourly and shares how many the node's GPU is sliced in (1 if
+    it isn't). Returns one row per (node, team) plus the
     idle remainder, and the totals.
     """
     rows = []
     for name, node in sorted(nodes.items()):
+        shares = node["shares"]
         share_hours = node["hours"] * shares
         used = {}
         for a in allocations:
@@ -91,8 +94,8 @@ def fetch_allocations(opencost, start, end):
     ]
 
 
-def fetch_nodes(prometheus, start, end):
-    """GPU nodes' uptime, GPU price and capacity type. From OpenCost's metrics
+def fetch_nodes(prometheus, start, end, prices_by_capacity):
+    """GPU nodes' uptime, price, shares and capacity type. From OpenCost's metrics
     in Prometheus: its /assets API gave nodes 0 minutes in short windows."""
     span = f"[{int((end - start).total_seconds())}s:{STEP}s]"
 
@@ -103,13 +106,16 @@ def fetch_nodes(prometheus, start, end):
     samples = query(f"count_over_time((max by (node) (node_gpu_count > 0)){span})")
     prices = query(f"avg_over_time((max by (node) (node_gpu_hourly_cost)){span})")
     counts = query(f"avg_over_time((max by (node) (node_gpu_count > 0)){span})")
-    labels = query(f"max_over_time((max by (node, label_{CAPACITY_LABEL}) (kube_node_labels)){span})")
+    labels = query(f"max_over_time((max by (node, label_{CAPACITY_LABEL}, label_{REPLICAS_LABEL}) (kube_node_labels)){span})")
     nodes = {}
     for name, r in samples.items():
+        meta = labels[name]["metric"]
+        capacity = meta.get(f"label_{CAPACITY_LABEL}", "unknown")
         nodes[name] = {
             "hours": int(r["value"][1]) * STEP / 3600,
-            "price": float(prices[name]["value"][1]),
-            "capacity": labels[name]["metric"].get(f"label_{CAPACITY_LABEL}", "unknown"),
+            "price": prices_by_capacity.get(capacity, float(prices[name]["value"][1])),
+            "shares": int(meta.get(f"label_{REPLICAS_LABEL}", 1)),
+            "capacity": capacity,
             "counted_gpus": float(counts[name]["value"][1]),
         }
     return nodes
@@ -120,16 +126,18 @@ def main():
     p.add_argument("--opencost", default="http://localhost:9003")
     p.add_argument("--prometheus", default="http://localhost:9090")
     p.add_argument("--window", default="1h", help="e.g. 90m, 6h, 2d, or <start>,<end> in RFC3339")
-    p.add_argument("--shares", type=int, default=2, help="time-sliced shares per GPU")
+    p.add_argument("--price", action="append", default=[], metavar="CAPACITY=USD",
+                   help="whole-node hourly price, e.g. on-demand=0.526 (default: OpenCost's GPU price only)")
     p.add_argument("--json", help="also write the raw inputs and results here")
     args = p.parse_args()
 
     start, end = parse_window(args.window)
     allocations = fetch_allocations(args.opencost, start, end)
-    nodes = fetch_nodes(args.prometheus, start, end)
+    nodes = fetch_nodes(args.prometheus, start, end,
+                        {k: float(v) for k, v in (x.split("=") for x in args.price)})
     if not nodes:
         raise SystemExit("No GPU nodes in that window.")
-    rows, totals, real = chargeback(allocations, nodes, args.shares)
+    rows, totals, real = chargeback(allocations, nodes)
 
     print("| node | capacity | team | | share-hours | OpenCost | owed |")
     print("|---|---|---|---|---|---|---|")
@@ -147,7 +155,7 @@ def main():
           + ", ".join(f"{n} {v['counted_gpus']:g}" for n, v in sorted(nodes.items())))
     if args.json:
         with open(args.json, "w") as f:
-            json.dump({"window": args.window, "shares": args.shares, "allocations": allocations,
+            json.dump({"window": args.window, "allocations": allocations,
                        "nodes": nodes, "rows": rows, "totals": totals, "real": real}, f, indent=1)
 
 

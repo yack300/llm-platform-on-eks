@@ -12,23 +12,25 @@ it gets it back.
 
 | Team | Namespace | Runs | Its GPU | Rule |
 |---|---|---|---|---|
-| product | `llm-platform` | vLLM (the RAG model) | the on-demand one | never interrupted: not by AWS (on-demand), not by research (it reclaims) |
-| research | `training` | fine-tuning workflows | the spot one | can borrow product's idle GPU share; evicted when product needs it |
+| product | `llm-platform` | vLLM (the RAG model) | the on-demand one, time-sliced in 2 | never interrupted: not by AWS (on-demand), not by research (it reclaims) |
+| research | `training` | fine-tuning workflows | the spot one, whole | waits if it's taken or there's no spot capacity |
+| research, small jobs | `training` | anything that fits in half a T4 | a share of product's GPU, borrowed | evicted when product needs it |
 
-The account's GPU quota allows one g4dn.xlarge spot and one on-demand, so
-each team's quota is one T4. With time-slicing (phase C) each T4 is
-advertised as 2 shares, and quotas count shares.
+The account's GPU quota allows one g4dn.xlarge spot and one on-demand.
 
 ## How it works
 
 - **Kueue** (`k8s/teams/`, Argo CD app `kueue`, wave 0) admits GPU pods
-  against the quotas. Each team has a ClusterQueue in the same cohort
-  (`gpus`), so unused quota can be lent, and a LocalQueue in its namespace.
+  against the quotas. The ClusterQueues (`product`, `research`,
+  `research-shared`) are in one cohort (`gpus`), so unused quota can be
+  lent, each with a LocalQueue in its team's namespace. Only
+  `research-shared` borrows: it has no quota of its own.
 - **Flavors** map the quota to capacity types: `gpu-on-demand` and
-  `gpu-spot`. Kueue adds the flavor's `karpenter.sh/capacity-type` to the
+  `gpu-spot`. Each is a Karpenter NodePool (`gpu-shared`, `gpu`), limited to
+  1 GPU. Kueue adds the flavor's `karpenter.sh/capacity-type` to the
   admitted pod's node selector, and Karpenter launches that kind of node.
 - **product**'s queue reclaims its own quota from a borrower
-  (`reclaimWithinCohort: Any`); research's queue never preempts anyone.
+  (`reclaimWithinCohort: Any`); research's queues never preempt anyone.
 - **What gets queued:** only pods with a `kueue.x-k8s.io/queue-name`
   label: vLLM's Deployment (`product`) and the fine-tuning workflow's pods
   (`research`, through the WorkflowTemplate's `podMetadata`). Kueue's
@@ -51,6 +53,10 @@ Two settings were chosen for safety rather than defaults:
   platform NodePool's 4-CPU limit leaves for add-ons: 100m here.
 
 ## Phase A: the rules on kind (2026-11-23)
+
+With the first split: both GPUs in 2 shares, and one research queue that
+borrowed. [Preparing EKS](#preparing-eks-what-the-first-split-got-wrong)
+changed it.
 
 `scripts/teams-local.sh` builds a kind cluster whose two workers advertise
 a fake `nvidia.com/gpu: 2` (a status patch) and carry Karpenter's
@@ -138,19 +144,66 @@ Not covered: on EKS a GPU node's price includes its CPU and memory, which
 this charges to nobody, and spot prices need configuring in OpenCost. And
 shares held aren't GPU time used: a team pays for what it reserves.
 
-## Open questions for EKS (phase C)
+## Preparing EKS: what the first split got wrong
 
-- **Time-slicing** on Bottlerocket (`settings.kubelet-device-plugins.nvidia`,
-  `time-slicing.replicas: 2`): there's no memory isolation. vLLM takes 85%
-  of the T4's 16 GB today, and a QLoRA step needs ~10 GB, so they can't
-  share a GPU as configured. Kueue counts shares, not memory.
-- **Karpenter doesn't know about time-slicing:** it sizes a g4dn.xlarge as
-  1 GPU, so two pending pods asking for one share each may make it launch
-  two nodes where one would do, against a quota of one instance per
-  capacity type.
-- **Kueue and scale-to-zero:** a vLLM pod now waits for admission before
-  Karpenter sees it. Locally that's a couple of seconds; on a cold start
-  it adds to the ~5 minutes.
-- **Chargeback against the bill:** the report's total compared with Cost
-  Explorer's GPU instances, with the node's CPU and memory included and real
-  spot prices.
+Checked on paper before paying for a cluster:
+
+- **Two vLLM replicas don't fit a node.** Each requests 8 GiB of memory and
+  a g4dn.xlarge has 16. KEDA's maximum is now 1 (it was 3).
+- **Training can't share a T4**, and it can't ask for both shares either: a
+  pod requesting `nvidia.com/gpu: 2` would never get a node, because
+  Karpenter sizes a g4dn.xlarge as 1 GPU. Borrowing one share, it would land
+  next to vLLM and one of them would run out of memory. So the spot GPU
+  isn't sliced and training only goes there; small jobs borrow, from a queue
+  of their own (`borrowingLimit: 1`).
+- **Karpenter would launch a node per pending share** for the same reason.
+  Each GPU NodePool is limited to 1 GPU, the account's quota anyway.
+- **vLLM took 85% of the GPU's memory**; now 45%. Its KV cache shrinks with
+  it, so part of what phase C measures is that and not the sharing: the
+  baseline has to be taken again at 45%.
+- **OpenCost needs GPU Feature Discovery's labels**, which Bottlerocket
+  doesn't set: the `gpu-shared` NodePool does.
+- The price of "never interrupted": vLLM now always runs on demand
+  ($0.526/h, against ~$0.27 when spot was available), and training has no
+  on-demand fallback. Most runs so far found no spot capacity.
+
+Time-slicing is `settings.kubelet-device-plugins.nvidia` in the `gpu-shared`
+EC2NodeClass's `userData`; Karpenter 1.15.0 validates only
+`settings.kubernetes` and passes the rest of the TOML through (its
+`bottlerocketsettings.go`). Neither has run on EKS yet.
+
+The new split on kind (2026-11-24, the same two scripts):
+
+| Step | What happened | Time |
+|---|---|---|
+| research submits two trainings and a small job | one training on spot, the small job on a borrowed share, the second training waits | 11 s |
+| product asks for both on-demand shares | the small job is evicted and retried as a pod that waits; the running training isn't touched | 2 s |
+| product scales to 0 | the small job is admitted again | 5 s |
+
+And 18 minutes of it priced: the nodes cost $0.2388 and the report assigns
+$0.2388 ($0.1096 product, $0.1292 research); OpenCost bills $0.2781. On the
+spot node, not sliced, OpenCost and the report agree: $0.0765 for the
+training.
+
+## Phase C: the EKS session, planned
+
+About 2 hours of cluster and 1.5 of on-demand GPU: $2-4.
+
+1. Cluster and Argo CD as always; `kueue`, `teams` and `opencost` Healthy.
+2. Wake vLLM. Check its node: `nvidia.com/gpu: 2` allocatable, the two
+   labels, one node only. How long Kueue's admission adds to the cold start.
+3. `scripts/gpu-interference.sh`: vLLM alone at 45%, then with a job in the
+   other share.
+4. `LOAD_GIB=12 ONLY_LOAD=1 scripts/gpu-interference.sh`: a job that doesn't
+   fit. Which of the two fails?
+5. Eviction: a pod in product's queue asking for the second share while the
+   job runs.
+6. A fine-tuning workflow on spot, if there's capacity (it'd also show what
+   a spot reclaim does), with vLLM serving.
+7. `scripts/gpu-chargeback.py --price on-demand=0.526 --price spot=<that
+   day's>` for the session; Cost Explorer two days later.
+8. `scripts/teardown-eks.sh`, with the queues emptied first.
+
+Not answered by the plan: how Kueue's 2 shares behave if the node is slow to
+come (a Workload is admitted against quota, not capacity), and who pays for
+the node's CPU and memory besides the GPU's holder.

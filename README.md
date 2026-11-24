@@ -130,6 +130,7 @@ llm-platform-on-eks/
     ├── teams-local.sh          # Kueue GPU queues on kind with fake GPUs: borrowing and eviction
     ├── chargeback-local.sh     # OpenCost on that cluster: a scenario whose cost is known
     ├── gpu-chargeback.py       # GPU cost per team, from OpenCost and Prometheus
+    ├── gpu-interference.sh     # EKS: vLLM's benchmark alone and sharing a time-sliced GPU
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
     └── teardown-eks.sh         # EKS: delete apps and PVC volumes before terraform destroy
 ```

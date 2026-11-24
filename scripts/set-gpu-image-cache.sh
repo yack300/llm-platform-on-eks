@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Points the GPU nodes' data volume at the image cache snapshot (built by
 # scripts/build-gpu-image-cache.sh), or back to an empty volume. It patches
-# the `gpu` EC2NodeClass in the cluster; Argo CD ignores these two fields,
+# the `gpu` and `gpu-shared` EC2NodeClasses in the cluster; Argo CD ignores these two fields,
 # since the snapshot is per account and can't live in Git. Karpenter treats
 # the change as drift and replaces any running GPU node.
 #
@@ -31,21 +31,23 @@ if [ -z "$snapshot" ]; then
   fi
 fi
 
-# The data volume is the second mapping in k8s/karpenter/gpu.yaml.
-device=$(kubectl get ec2nodeclass gpu -o jsonpath='{.spec.blockDeviceMappings[1].deviceName}')
-[ "$device" = "/dev/xvdb" ] || { echo "Expected /dev/xvdb as blockDeviceMappings[1], got '$device'" >&2; exit 1; }
 path=/spec/blockDeviceMappings/1/ebs
+for class in gpu gpu-shared; do
+  # The data volume is the second mapping in k8s/karpenter/gpu.yaml.
+  device=$(kubectl get ec2nodeclass "$class" -o jsonpath='{.spec.blockDeviceMappings[1].deviceName}')
+  [ "$device" = "/dev/xvdb" ] || { echo "Expected /dev/xvdb as $class's blockDeviceMappings[1], got '$device'" >&2; exit 1; }
 
-if [ "$snapshot" = "off" ]; then
-  for field in snapshotID volumeInitializationRate; do
-    kubectl patch ec2nodeclass gpu --type=json -p "[{\"op\":\"remove\",\"path\":\"$path/$field\"}]" 2>/dev/null || true
-  done
-  echo "GPU data volume: empty (the vLLM image is pulled on each cold start)."
-else
-  kubectl patch ec2nodeclass gpu --type=json -p "[
-    {\"op\":\"add\",\"path\":\"$path/snapshotID\",\"value\":\"$snapshot\"},
-    {\"op\":\"add\",\"path\":\"$path/volumeInitializationRate\",\"value\":$INIT_RATE}
-  ]" >/dev/null
-  echo "GPU data volume: from $snapshot, initialized at $INIT_RATE MiB/s."
-fi
-kubectl get ec2nodeclass gpu -o jsonpath='{.spec.blockDeviceMappings[1].ebs}'; echo
+  if [ "$snapshot" = "off" ]; then
+    for field in snapshotID volumeInitializationRate; do
+      kubectl patch ec2nodeclass "$class" --type=json -p "[{\"op\":\"remove\",\"path\":\"$path/$field\"}]" 2>/dev/null || true
+    done
+    echo "$class data volume: empty (the vLLM image is pulled on each cold start)."
+  else
+    kubectl patch ec2nodeclass "$class" --type=json -p "[
+      {\"op\":\"add\",\"path\":\"$path/snapshotID\",\"value\":\"$snapshot\"},
+      {\"op\":\"add\",\"path\":\"$path/volumeInitializationRate\",\"value\":$INIT_RATE}
+    ]" >/dev/null
+    echo "$class data volume: from $snapshot, initialized at $INIT_RATE MiB/s."
+  fi
+  kubectl get ec2nodeclass "$class" -o jsonpath='{.spec.blockDeviceMappings[1].ebs}'; echo
+done

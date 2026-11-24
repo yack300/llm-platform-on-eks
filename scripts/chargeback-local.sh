@@ -4,14 +4,11 @@
 # and a scenario of known length, so what OpenCost bills each team can be
 # checked by hand (docs/gpu-teams.md).
 #
-#   1. research: 2 shares on spot + 1 borrowed on on-demand
+#   1. research: the spot GPU + 1 borrowed share of the on-demand one
 #   2. product scales to 2 replicas: it gets both on-demand shares back
 #   3. product scales to 0: research borrows again
 #
 #   MINUTES=10     length of each phase
-#   GFD_LABELS=1   add the labels GPU Feature Discovery sets on a time-sliced
-#                  node (nvidia.com/gpu.count, .replicas), which OpenCost
-#                  reads; 0 removes them, as on Bottlerocket (it runs no GFD)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -20,7 +17,6 @@ CLUSTER_NAME="llm-teams-local"
 PROMETHEUS_CHART_VERSION="91.9.0" # k8s/argocd/apps/kube-prometheus-stack.yaml
 OPENCOST_CHART_VERSION="2.5.34"   # k8s/argocd/apps/opencost.yaml
 MINUTES="${MINUTES:-10}"
-GFD_LABELS="${GFD_LABELS:-0}"
 PRICE_ON_DEMAND=0.526 # docs/cost-comparison.md
 PRICE_SPOT=0.27
 
@@ -32,16 +28,14 @@ kubectl -n training delete workflows --all --wait=true >/dev/null
 kubectl -n llm-platform delete deployment vllm-standin --ignore-not-found --wait=true >/dev/null
 kubectl wait workloads --all -A --for=delete --timeout=2m 2>/dev/null || true
 
-echo "==> Pricing the GPU nodes (GFD labels: $GFD_LABELS)..."
+echo "==> Pricing the GPU nodes..."
 for type in on-demand spot; do
   price=$PRICE_ON_DEMAND; [ "$type" = spot ] && price=$PRICE_SPOT
   kubectl annotate nodes -l "karpenter.sh/capacity-type=$type" --overwrite "opencost.io/node-gpu-hourly-cost=$price"
 done
-if [ "$GFD_LABELS" = 1 ]; then
-  kubectl label nodes -l karpenter.sh/capacity-type --overwrite nvidia.com/gpu.count=1 nvidia.com/gpu.replicas=2
-else
-  kubectl label nodes -l karpenter.sh/capacity-type nvidia.com/gpu.count- nvidia.com/gpu.replicas- >/dev/null
-fi
+# As k8s/karpenter/gpu.yaml's gpu-shared NodePool
+kubectl label nodes -l karpenter.sh/capacity-type=on-demand --overwrite nvidia.com/gpu.count=1 nvidia.com/gpu.replicas=2
+kubectl label nodes -l karpenter.sh/capacity-type=spot nvidia.com/gpu.count- nvidia.com/gpu.replicas- >/dev/null
 
 echo "==> Installing Prometheus (no Grafana) and OpenCost..."
 helm upgrade --install prometheus kube-prometheus-stack \
@@ -66,9 +60,6 @@ metadata:
 spec:
   entrypoint: sweep
   serviceAccountName: argo-workflow
-  podMetadata:
-    labels:
-      kueue.x-k8s.io/queue-name: research
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -77,8 +68,19 @@ spec:
       steps:
         - - name: run
             template: gpu-step
-            withItems: [a, b, c]
+            arguments:
+              parameters:
+                - {name: queue, value: "{{item.queue}}"}
+            withItems:
+              - {name: train, queue: research}
+              - {name: small, queue: research-shared}
     - name: gpu-step
+      inputs:
+        parameters:
+          - name: queue
+      metadata:
+        labels:
+          kueue.x-k8s.io/queue-name: "{{inputs.parameters.queue}}"
       retryStrategy: # an evicted step is an error to Argo (teams-local.sh)
         limit: "3"
         retryPolicy: OnError
@@ -138,9 +140,9 @@ sleep 5
 python3 - "$MINUTES" "$PRICE_ON_DEMAND" "$PRICE_SPOT" <<'EOT'
 import sys
 h, od, spot = float(sys.argv[1]) / 60, float(sys.argv[2]), float(sys.argv[3])
-print("Expected by hand, 2 shares per GPU (phases at their nominal length):")
+print("Expected by hand, on-demand GPU in 2 shares (phases at their nominal length):")
 print(f"  product  used ${2 * h / 2 * od:.4f}  idle ${(1 + 1) * h / 2 * od:.4f} (one on-demand share in phases 1 and 3)")
-print(f"  research used ${2 * 3 * h / 2 * spot + 2 * h / 2 * od:.4f} (spot all along + one on-demand share in phases 1 and 3)")
+print(f"  research used ${3 * h * spot + 2 * h / 2 * od:.4f} (the spot GPU all along + one on-demand share in phases 1 and 3)")
 print(f"  both nodes, {3 * h:.2f} h: ${3 * h * (od + spot):.4f}")
 EOT
 echo

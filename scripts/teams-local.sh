@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Kueue's GPU queues on kind, no GPU: two "GPU nodes" that advertise a fake
-# nvidia.com/gpu (2 time-sliced shares each, like a T4 on EKS), one labeled
-# on-demand and one spot as Karpenter would, the queues from
-# k8s/teams/queues.yaml and Kueue with the EKS values. Then the scenario
-# docs/gpu-teams.md describes:
+# nvidia.com/gpu, as k8s/karpenter/gpu.yaml's: on-demand time-sliced in 2,
+# spot whole. With the queues from k8s/teams/queues.yaml and Kueue with the
+# EKS values, the scenario docs/gpu-teams.md describes:
 #
-#   1. research runs 3 GPU steps: 2 on its spot shares, 1 borrowed from
-#      product's on-demand GPU
-#   2. a minute later product scales a vLLM stand-in to 2 replicas: Kueue
-#      evicts the borrowing step, which Argo Workflows marks Error and
-#      retries as a new pod that waits in the queue
-#   3. product scales back to 0: the waiting step is admitted again
+#   1. research trains on its spot GPU and runs a small job on the share of
+#      product's on-demand GPU that nobody uses; a second training waits
+#   2. a minute later product asks for both on-demand shares: Kueue evicts
+#      the small job, which Argo Workflows marks Error and retries as a new
+#      pod that waits in the queue; training isn't touched
+#   3. product scales back to 0: the waiting job is admitted again
 #
 # Prints how long each admission took. The pods only sleep: this checks
 # quotas, borrowing and eviction, not GPU sharing (that needs a real GPU).
@@ -82,10 +81,13 @@ kubectl config use-context "kind-$CLUSTER_NAME"
 
 echo "==> Making the workers look like time-sliced T4 nodes..."
 for node in $(kubectl get nodes -l karpenter.sh/capacity-type -o jsonpath='{.items[*].metadata.name}'); do
-  # The GPU NodePool's taint, and 2 shares of a GPU as an extended resource
+  # The GPU NodePools' taint, and the GPU (or its 2 shares) as an extended
+  # resource
+  gpus=1
+  [ "$(kubectl get node "$node" -o jsonpath='{.metadata.labels.karpenter\.sh/capacity-type}')" = on-demand ] && gpus=2
   kubectl taint node "$node" nvidia.com/gpu=present:NoSchedule --overwrite
   kubectl patch node "$node" --subresource=status --type=json \
-    -p '[{"op": "add", "path": "/status/capacity/nvidia.com~1gpu", "value": "2"}]'
+    -p '[{"op": "add", "path": "/status/capacity/nvidia.com~1gpu", "value": "'"$gpus"'"}]'
 done
 # Everything else (Kueue, Argo Workflows) runs on the control plane, the
 # platform nodes' role on EKS
@@ -114,7 +116,7 @@ kubectl -n training delete workflows --all --wait=true >/dev/null
 kubectl -n llm-platform delete deployment vllm-standin --ignore-not-found --wait=true >/dev/null
 
 echo
-echo "==> 1. research: three GPU steps, two shares of its own"
+echo "==> 1. research: two trainings (its GPU fits one) and a small job on a borrowed share"
 start=$(ts)
 kubectl create -f - >/dev/null <<'EOF'
 apiVersion: argoproj.io/v1alpha1
@@ -125,10 +127,6 @@ metadata:
 spec:
   entrypoint: sweep
   serviceAccountName: argo-workflow
-  # Same queue label and retry as k8s/training/finetune-workflow.yaml
-  podMetadata:
-    labels:
-      kueue.x-k8s.io/queue-name: research
   securityContext: # Argo's executor runs as non-root (argo-workflows-values.yaml)
     runAsNonRoot: true
     runAsUser: 10001
@@ -137,8 +135,21 @@ spec:
       steps:
         - - name: run
             template: gpu-step
-            withItems: [a, b, c]
+            arguments:
+              parameters:
+                - {name: queue, value: "{{item.queue}}"}
+            withItems:
+              - {name: train-a, queue: research}
+              - {name: train-b, queue: research}
+              - {name: small, queue: research-shared}
+    # Queue label and retry as in k8s/training/finetune-workflow.yaml
     - name: gpu-step
+      inputs:
+        parameters:
+          - name: queue
+      metadata:
+        labels:
+          kueue.x-k8s.io/queue-name: "{{inputs.parameters.queue}}"
       retryStrategy:
         limit: "3"
         retryPolicy: OnError
@@ -151,9 +162,9 @@ spec:
           requests: {cpu: 10m, memory: 16Mi, nvidia.com/gpu: "1"}
           limits: {cpu: 100m, memory: 32Mi, nvidia.com/gpu: "1"}
 EOF
-wait_research_running 3 180 || true
+wait_research_running 2 180 || true
 running=$(research_running)
-echo "$running of 3 research steps running after $(elapsed "$start")"
+echo "$running of 3 research steps running (2 expected) after $(elapsed "$start")"
 show
 
 # Evict a step that has really been running. Argo recreates, under the same
@@ -204,9 +215,9 @@ echo
 echo "==> 3. product scales to 0 (KEDA would, with no demand): the waiting step gets its share back"
 start=$(ts)
 kubectl -n llm-platform scale deployment vllm-standin --replicas=0 >/dev/null
-wait_research_running 3 180 || true
+wait_research_running 2 180 || true
 running=$(research_running)
-echo "$running of 3 research steps running again after $(elapsed "$start")"
+echo "$running of 3 research steps running (2 expected) again after $(elapsed "$start")"
 show
 
 echo "----------------------------------------------------------------------"

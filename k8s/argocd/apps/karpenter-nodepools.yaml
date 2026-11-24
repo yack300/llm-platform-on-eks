@@ -1,7 +1,7 @@
 # Karpenter's NodePools and EC2NodeClasses (k8s/karpenter/). Wave 1: needs
 # the CRDs the karpenter Application installs in wave 0.
 #
-# The GPU EC2NodeClass's image cache (snapshotID/volumeInitializationRate)
+# The GPU EC2NodeClasses' image cache (snapshotID/volumeInitializationRate)
 # is set per account by scripts/set-gpu-image-cache.sh, not in Git: Argo CD
 # ignores those two fields and keeps them on sync.
 apiVersion: argoproj.io/v1alpha1
@@ -27,7 +27,6 @@ spec:
   ignoreDifferences:
     - group: karpenter.k8s.aws
       kind: EC2NodeClass
-      name: gpu
       jqPathExpressions:
         - .spec.blockDeviceMappings[]?.ebs.snapshotID
         - .spec.blockDeviceMappings[]?.ebs.volumeInitializationRate

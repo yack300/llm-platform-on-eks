@@ -98,8 +98,11 @@ spec:
             - "awq"
             - "--max-model-len"
             - "4096"
+            # Half of the T4, not 0.85: its node is time-sliced in 2
+            # (k8s/karpenter/gpu.yaml) with no memory isolation, so this is
+            # what leaves room for the pod in the other share.
             - "--gpu-memory-utilization"
-            - "0.85"
+            - "0.45"
             # LoRA adapters on top of the AWQ base (vLLM tests LoRA on AWQ
             # models), each served as its own model name next to
             # local-mistral, so base and adapters answer side by side on one

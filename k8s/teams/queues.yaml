@@ -1,14 +1,16 @@
-# GPU quotas for the two teams (docs/gpu-teams.md). Units are time-sliced
-# shares of a GPU (nvidia.com/gpu): each T4 is meant to be advertised as 2
-# (time-slicing in the GPU EC2NodeClass's Bottlerocket settings, not set
-# yet: until then a node advertises 1), and the account's quota allows one
-# GPU node of each capacity type.
+# GPU quotas for the two teams (docs/gpu-teams.md). The account's quota allows
+# one GPU node of each capacity type (k8s/karpenter/gpu.yaml):
 #
-#   product   (llm-platform) the on-demand GPU: serving can't be
-#             interrupted by a spot reclaim
-#   research  (training) the spot GPU, plus whatever share of the on-demand
-#             GPU product isn't using, which it gives back when product
-#             needs it: Kueue evicts the borrowing pod
+#   product   (llm-platform) the on-demand GPU, time-sliced in 2 shares:
+#             serving can't be interrupted by a spot reclaim
+#   research  (training) the whole spot GPU, for training
+#   research-shared  (training) no quota of its own: small jobs that borrow
+#             the share of the on-demand GPU product isn't using, and give it
+#             back when product needs it (Kueue evicts the borrowing pod)
+#
+# Training can't borrow: it needs most of a T4's memory, which time-slicing
+# doesn't isolate, so next to vLLM one of the two would run out. Quotas count
+# nvidia.com/gpu, not memory.
 #
 # Each flavor pins admitted pods to that capacity type through Karpenter's
 # label.
@@ -60,15 +62,31 @@ spec:
   resourceGroups:
     - coveredResources: ["nvidia.com/gpu"]
       flavors:
-        # Its own spot GPU first; then borrow from product's on-demand one
         - name: gpu-spot
           resources:
             - name: nvidia.com/gpu
-              nominalQuota: 2
+              nominalQuota: 1
+  preemption:
+    reclaimWithinCohort: Never
+    withinClusterQueue: Never
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: research-shared
+spec:
+  cohortName: gpus
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: training
+  resourceGroups:
+    - coveredResources: ["nvidia.com/gpu"]
+      flavors:
         - name: gpu-on-demand
           resources:
             - name: nvidia.com/gpu
               nominalQuota: 0
+              borrowingLimit: 1 # one job next to vLLM, never the whole GPU
   preemption:
     reclaimWithinCohort: Never
     withinClusterQueue: Never
@@ -88,3 +106,11 @@ metadata:
   namespace: training
 spec:
   clusterQueue: research
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: research-shared
+  namespace: training
+spec:
+  clusterQueue: research-shared

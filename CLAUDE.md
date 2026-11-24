@@ -48,6 +48,7 @@ cd terraform && terraform init -backend-config=backend.hcl && terraform apply -v
 # Measurements (stdlib Python, need: kubectl -n llm-platform port-forward svc/litellm-gateway 4000:4000)
 ./scripts/measure-cold-start.py          # from vLLM + GPU nodes at 0 to the first vLLM answer
 ./scripts/benchmark.py --json out.json   # TTFT, latency, tokens/s at concurrency 1,4,8
+./scripts/gpu-interference.sh            # the same with a job in the GPU's other time-sliced share
 
 # Teardown: ALWAYS before terraform destroy (removes Karpenter's nodes and PVC-backed EBS volumes)
 ./scripts/teardown-eks.sh
@@ -82,9 +83,9 @@ docker build -f apps/finetune/Dockerfile -t llm-platform-finetune:dev .
 docker run --rm --user 0 -v "$PWD/apps/finetune":/src -w /src llm-platform-finetune:dev sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider tests'
 ./scripts/finetune-local.sh
 # Kueue's GPU queues on their own kind cluster (llm-teams-local), fake GPUs:
-# research borrows product's share, product takes it back (docs/gpu-teams.md)
+# a research job borrows product's share, product takes it back (docs/gpu-teams.md)
 ./scripts/teams-local.sh
-# OpenCost on that cluster, with a scenario whose cost is known (MINUTES, GFD_LABELS)
+# OpenCost on that cluster, with a scenario whose cost is known (MINUTES)
 ./scripts/chargeback-local.sh
 python3 -m unittest discover -s tests   # the report's arithmetic (CI runs it)
 # GPU cost per team (needs port-forwards of opencost 9003 and prometheus 9090)
@@ -159,8 +160,10 @@ first (with root's auto-sync off, or Argo CD recreates them) and waits for the n
 to go while Karpenter still runs; destroying with PVCs still present orphans their EBS
 volumes. Both keep billing.
 
-**Karpenter (`k8s/karpenter/`).** Two NodePools: `gpu` (g4dn.xlarge, spot falling back
-to on-demand, tainted `nvidia.com/gpu`, removed 5 min after it's empty) and `platform`
+**Karpenter (`k8s/karpenter/`).** Three NodePools: `gpu` (g4dn.xlarge on spot, whole)
+and `gpu-shared` (on-demand, time-sliced through its EC2NodeClass's `userData`), both
+tainted `nvidia.com/gpu`, removed 5 min after they're empty and limited to 1 GPU
+(Karpenter doesn't know about the shares), and `platform`
 (overflow for platform pods beyond the fixed 2-node managed node group, which runs
 Karpenter itself). EC2NodeClasses find subnets and the node security group by the
 `karpenter.sh/discovery` tag Terraform adds, and reference the node role by its fixed
@@ -190,9 +193,12 @@ differences: only the production config defines the `claude-fallback` model and
 vLLM), and the `otel` callback, since kind runs no Tempo.
 
 **GPU teams (Kueue, `k8s/teams/`, docs/gpu-teams.md).** Two teams share the GPUs:
-product (`llm-platform`, vLLM; the on-demand GPU, reclaims it from borrowers) and
-research (`training`, the fine-tuning workflows; the spot GPU, borrows product's idle
-share). Only pods labeled `kueue.x-k8s.io/queue-name` are queued: vLLM's Deployment
+product (`llm-platform`, vLLM) has the on-demand GPU, time-sliced in 2, and reclaims it
+from borrowers; research (`training`) has the whole spot GPU for the fine-tuning
+workflows, and a `research-shared` queue for small jobs that borrow the share product
+isn't using. Training must not go to `research-shared`: time-slicing doesn't isolate
+memory (vLLM is capped at `--gpu-memory-utilization 0.45` for that reason, and KEDA at
+1 replica: two don't fit a g4dn.xlarge's RAM). Only pods labeled `kueue.x-k8s.io/queue-name` are queued: vLLM's Deployment
 and the WorkflowTemplate's `podMetadata`; Kyverno's `require-gpu-queue` denies a GPU
 pod without the label in those namespaces. Kueue's webhooks fail closed, so
 `managedJobsNamespaceSelector` in `kueue-values.yaml` must keep listing only the

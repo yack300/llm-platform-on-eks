@@ -36,6 +36,7 @@ kubectl get nodeclaims 2>/dev/null || true
 echo "==> Emptying the GPU queues (Kueue)..."
 kubectl -n argocd delete application vllm --ignore-not-found --timeout=10m
 kubectl -n training delete workflows --all --ignore-not-found --timeout=5m 2>/dev/null || true
+kubectl -n training delete pods -l kueue.x-k8s.io/queue-name --ignore-not-found --timeout=5m 2>/dev/null || true
 kubectl wait workloads --all -A --for=delete --timeout=5m 2>/dev/null || true
 
 echo "==> Deleting the root Application (cascades to every child Application)..."

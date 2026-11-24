@@ -11,9 +11,8 @@
 # scripts/finetune-local.sh (CPU smoke test with a tiny model on kind).
 #
 # By default each step asks for the GPU (pod-spec-patch): Karpenter launches
-# a g4dn.xlarge for it as it does for vLLM. Kueue decides which one: the
-# research team's spot GPU, or a share of the product team's on-demand GPU
-# while vLLM doesn't need it (k8s/teams/queues.yaml).
+# a g4dn.xlarge for it as it does for vLLM. Kueue admits it to the research
+# team's GPU, a whole T4 on spot (k8s/teams/queues.yaml).
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
@@ -61,10 +60,10 @@ spec:
     secondsAfterCompletion: 86400
   # Every pod goes through the research team's GPU queue (Kueue,
   # k8s/teams/queues.yaml): it waits there until the team's quota has room.
-  # A step on GPU share borrowed from the product team is evicted when
-  # product needs it back: Kueue deletes the pod and Argo marks the step
-  # Error ("pod deleted"). The steps' retryStrategy creates a new pod, which
-  # waits in the queue and starts over; without it the workflow fails.
+  # A step that loses its pod (its spot node reclaimed, or evicted by Kueue)
+  # is an Error to Argo ("pod deleted"). The steps' retryStrategy creates a
+  # new pod, which queues again and starts over; without it the workflow
+  # fails.
   podMetadata:
     labels:
       kueue.x-k8s.io/queue-name: research

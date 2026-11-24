@@ -34,7 +34,7 @@ from benchmark import master_key  # noqa: E402
 
 NAMESPACE = "llm-platform"
 POD_SELECTOR = "app=vllm-inference"
-GPU_NODE_SELECTOR = "karpenter.sh/nodepool=gpu"
+GPU_NODE_SELECTOR = "karpenter.sh/nodepool=gpu-shared"  # vLLM's NodePool
 VLLM_LOG_PATTERNS = [
     r"Loading weights took", r"Model loading took", r"[Gg]raph capturing finished",
     r"init engine .* took", r"Starting vLLM API server", r"Application startup complete",

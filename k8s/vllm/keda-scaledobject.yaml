@@ -26,7 +26,9 @@ spec:
   scaleTargetRef:
     name: vllm-inference
   minReplicaCount: 0  # allows scaling to 0 when there's no traffic (real cost savings)
-  maxReplicaCount: 3
+  # One: a g4dn.xlarge (16 GiB of RAM) fits one vLLM, and the quota allows
+  # one on-demand GPU node.
+  maxReplicaCount: 1
   cooldownPeriod: 120
   triggers:
     # Prometheus installed via kube-prometheus-stack with release name
