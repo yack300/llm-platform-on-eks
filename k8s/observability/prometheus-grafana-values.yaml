@@ -77,9 +77,6 @@ alertmanager:
 # TODO after deploying:
 # 1. Dashboard: done, see grafana-dashboard-llm-cost.yaml (cost per 1M tokens
 #    self-hosted vs. API, break-even, p50/p95/p99, breakdown by model).
-# 2. Install OpenCost or Kubecost for the underlying infra cost:
-#    helm repo add opencost https://opencost.github.io/opencost-helm-chart
-#    helm install opencost opencost/opencost -n opencost --create-namespace
-#    (OpenCost also exposes metrics via /metrics, scrapeable by this same Prometheus)
+# 2. OpenCost for the underlying infra cost: done, see opencost-values.yaml.
 # 3. Cross both sources (LLM cost via LiteLLM + infra cost via OpenCost)
 #    in docs/cost-comparison.md

@@ -123,11 +123,13 @@ llm-platform-on-eks/
 │   ├── retrieval-eval.md       # RAG retrieval metrics + CI baseline, answer quality judged by Claude
 │   ├── tracing.md              # One trace per RAG question (Tempo): where the time goes
 │   ├── fine-tuning.md          # Behavior LoRA: pipeline, first run, what it fixed and what it didn't
-│   └── gpu-teams.md            # Two teams sharing the GPUs: Kueue quotas, borrowing, eviction
+│   └── gpu-teams.md            # Two teams sharing the GPUs: Kueue quotas, borrowing, eviction, chargeback
 └── scripts/
     ├── deploy-local.sh         # Fast bootstrap on kind/minikube (no GPU, Ollama mock)
     ├── finetune-local.sh       # Fine-tuning pipeline smoke test on kind (CPU, tiny model)
     ├── teams-local.sh          # Kueue GPU queues on kind with fake GPUs: borrowing and eviction
+    ├── chargeback-local.sh     # OpenCost on that cluster: a scenario whose cost is known
+    ├── gpu-chargeback.py       # GPU cost per team, from OpenCost and Prometheus
     ├── bootstrap-argocd.sh     # EKS: install Argo CD, create the LiteLLM secret, apply the root app
     └── teardown-eks.sh         # EKS: delete apps and PVC volumes before terraform destroy
 ```
@@ -184,4 +186,5 @@ Known gaps:
 - LiteLLM doesn't restart on a ConfigMap change (no config checksum on its
   Deployment); a failing ingestion Sync hook blocks newer revisions until the
   sync is terminated.
-- OpenCost (infra-side cost) isn't installed yet.
+- OpenCost is deployed by Argo CD but has only run on kind; it bills each
+  time-sliced GPU share as a whole GPU (docs/gpu-teams.md).

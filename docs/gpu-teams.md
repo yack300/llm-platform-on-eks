@@ -66,11 +66,19 @@ only sleep:
 | product scales to 0 (what KEDA does with no demand) | the waiting step is admitted on `gpu-on-demand` again | 5 s |
 | product at 1 replica | the borrowing step keeps running: product needs 1 of its 2 shares | |
 
-**What eviction looks like for a workflow:** Kueue deletes the pod, and
-Argo Workflows creates it again under the same name, in the same workflow
-step, within about 2 seconds; no retry is used. The new pod is gated until
-Kueue admits it, then the step starts over. For a 30-minute training step,
-an eviction throws away whatever it had done.
+**What eviction looks like for a workflow:** Kueue deletes the pod and Argo
+Workflows marks the step `Error: pod deleted`. The step's `retryStrategy`
+(`OnError`) then creates a new pod, which waits in the queue and starts the
+step over; for a 30-minute training step, an eviction throws away whatever
+it had done. Without the retry the step stays failed and the workflow fails.
+
+This page first said the opposite (commit `7d6105e`: Argo creates the pod
+again by itself, no retry needed). That test evicted steps seconds after
+they started, while Argo still had them as Pending, and a pod deleted then
+*is* created again. A step that has been running isn't. It showed up in
+phase B, as ten minutes of research's GPU time missing from the cost
+report; `teams-local.sh` now lets the step run for a minute first (on that
+run, product's replicas were ready in 11 s and the retried step in 8 s).
 
 **Teardown:** Kueue puts finalizers on the pods and Workloads it queues,
 and only Kueue removes them. If its Application were deleted before them
@@ -81,6 +89,50 @@ the workflows) and waits for the Workloads to go: 2 s on kind.
 Also confirmed: the Kyverno policy denies a GPU pod without a queue
 (`tests/kyverno/`, run in CI), and Kueue's admission adds the flavor's
 node selector (`karpenter.sh/capacity-type: on-demand` on vLLM's pods).
+
+## Phase B: who pays, on kind (2026-11-24)
+
+OpenCost 1.121.4 (Argo CD app `opencost`) and `scripts/gpu-chargeback.py`,
+tested with a scenario whose cost can be worked out by hand
+(`scripts/chargeback-local.sh`): the fake T4s priced at $0.526/h on-demand
+and $0.27/h spot, all of it on the GPU, and three phases of 10 minutes
+(research borrows; product takes its GPU back; research borrows again).
+
+The report's rules: a team owes the GPU's price for the fraction of its
+shares it held, at that node's price, so a borrowed share is paid by the
+borrower. Shares nobody held are owed by the team whose quota they are.
+
+| | By hand, used | Report, used | Report, idle | Report, owed | OpenCost |
+|---|---|---|---|---|---|
+| product | $0.0877 | $0.0789 | $0.1052 | $0.1841 | $0.1578 |
+| research | $0.2227 | $0.2094 | $0.0045 | $0.2139 | $0.4188 |
+| both (nodes' real cost: $0.3980) | $0.3103 | $0.2883 | $0.1097 | **$0.3980** | **$0.5766** |
+
+- **OpenCost bills a time-sliced share as a whole GPU.** Both teams are
+  charged exactly twice what they used, 45% more than both nodes cost even
+  with shares sitting idle. It multiplies the shares requested by the price
+  of a GPU, and here also counts 2 GPUs on a node that has one.
+- **GPU Feature Discovery's labels fix only half.** With
+  `nvidia.com/gpu.count=1` and `.replicas=2` on the nodes, OpenCost counts
+  1 GPU per node, and still charges pods double: the same scenario with and
+  without the labels (two earlier runs) billed the same $0.4977 for nodes
+  that cost $0.40. Its source has the correction (`pkg/costmodel/metrics.go`
+  scales the allocation by GPUs/shares) behind
+  `verr != nil && err != nil`, that is, only when reading both numbers
+  *failed*; the condition looks inverted. Not reported upstream yet.
+- **The report adds up to the real cost** because it takes only the GPU
+  hours from OpenCost, and the nodes' uptime and price from Prometheus.
+- **Short pods lose time.** A pod counts up to about a minute less than it
+  ran (0.300 share-hours for 0.333), which the report hands to the owner as
+  idle. With OpenCost's default 5-minute resolution it was far worse: in a
+  6-minute test, product's pods and everything on the on-demand node were
+  missing. `queryResolutionSeconds: 60` here.
+- OpenCost's `/assets` API gave the nodes 0 minutes of life in that test;
+  the report doesn't use it.
+
+Not covered: on EKS a GPU node's price includes its CPU and memory, which
+this charges to nobody, and spot prices need configuring in OpenCost. And
+shares held aren't GPU time used: a team pays for what it reserves.
 
 ## Open questions for EKS (phase C)
 
@@ -95,6 +147,6 @@ node selector (`karpenter.sh/capacity-type: on-demand` on vLLM's pods).
 - **Kueue and scale-to-zero:** a vLLM pod now waits for admission before
   Karpenter sees it. Locally that's a couple of seconds; on a cold start
   it adds to the ~5 minutes.
-- **Chargeback (phase B):** how OpenCost splits a time-sliced GPU's cost
-  between the pods sharing it isn't documented. To be measured against
-  Cost Explorer.
+- **Chargeback against the bill:** the report's total compared with Cost
+  Explorer's GPU instances, with the node's CPU and memory included and real
+  spot prices.

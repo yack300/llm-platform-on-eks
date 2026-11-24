@@ -62,8 +62,9 @@ spec:
   # Every pod goes through the research team's GPU queue (Kueue,
   # k8s/teams/queues.yaml): it waits there until the team's quota has room.
   # A step on GPU share borrowed from the product team is evicted when
-  # product needs it back: Kueue deletes the pod, Argo creates it again and
-  # it waits in the queue, then starts over (scripts/teams-local.sh).
+  # product needs it back: Kueue deletes the pod and Argo marks the step
+  # Error ("pod deleted"). The steps' retryStrategy creates a new pod, which
+  # waits in the queue and starts over; without it the workflow fails.
   podMetadata:
     labels:
       kueue.x-k8s.io/queue-name: research
@@ -86,6 +87,10 @@ spec:
                   value: "{{steps.train.outputs.parameters.version}}"
 
     - name: train
+      # OnError: evicted or lost its node, not a training failure
+      retryStrategy: &retry
+        limit: "3"
+        retryPolicy: OnError
       podSpecPatch: "{{workflow.parameters.pod-spec-patch}}"
       container:
         image: "{{workflow.parameters.image}}"
@@ -124,6 +129,7 @@ spec:
       inputs:
         parameters:
           - name: version
+      retryStrategy: *retry
       podSpecPatch: "{{workflow.parameters.pod-spec-patch}}"
       container:
         image: "{{workflow.parameters.image}}"

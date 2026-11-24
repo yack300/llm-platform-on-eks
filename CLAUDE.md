@@ -84,6 +84,11 @@ docker run --rm --user 0 -v "$PWD/apps/finetune":/src -w /src llm-platform-finet
 # Kueue's GPU queues on their own kind cluster (llm-teams-local), fake GPUs:
 # research borrows product's share, product takes it back (docs/gpu-teams.md)
 ./scripts/teams-local.sh
+# OpenCost on that cluster, with a scenario whose cost is known (MINUTES, GFD_LABELS)
+./scripts/chargeback-local.sh
+python3 -m unittest discover -s tests   # the report's arithmetic (CI runs it)
+# GPU cost per team (needs port-forwards of opencost 9003 and prometheus 9090)
+./scripts/gpu-chargeback.py --window 6h
 # Kyverno policy tests (pods that must pass or be denied; CI runs them too)
 docker run --rm -v "$PWD":/repo -w /repo ghcr.io/kyverno/kyverno-cli:v1.19.1 test tests/kyverno/
 # terraform: fmt -check -recursive, then init -backend=false + validate in terraform/
@@ -193,8 +198,10 @@ pod without the label in those namespaces. Kueue's webhooks fail closed, so
 `managedJobsNamespaceSelector` in `kueue-values.yaml` must keep listing only the
 teams' namespaces: widening it makes pod creation there depend on Kueue being up.
 Quotas count `nvidia.com/gpu` only (CPU/memory excluded) and its flavors pin pods to a
-Karpenter capacity type through the node selector. An evicted workflow step is
-recreated by Argo with the same name and starts over (no retry involved). Kueue's
+Karpenter capacity type through the node selector. An evicted workflow step
+is an error to Argo ("pod deleted"): the steps' `retryStrategy: OnError` is what queues
+them again, from the start (only a pod evicted while its step is still Pending is
+recreated without it). Kueue's
 finalizers on queued pods and Workloads are why `teardown-eks.sh` empties the queues
 (vLLM's app, the workflows) before deleting root.
 
@@ -213,9 +220,11 @@ release name `prometheus`) that scrapes cost/latency metrics via the
 `ServiceMonitor`s in `k8s/observability/servicemonitors.yaml`. vLLM exposes native
 Prometheus metrics; LiteLLM needs `litellm_settings.success_callback`/
 `failure_callback: ["prometheus"]` set to expose its `/metrics` endpoint — this is
-what feeds `docs/cost-comparison.md`. OpenCost (infra-side cost) is not installed
-anywhere yet — it only appears as a documented next step in the comments at the end
-of `prometheus-grafana-values.yaml`.
+what feeds `docs/cost-comparison.md`. OpenCost (`k8s/observability/opencost-values.yaml`)
+reads that Prometheus and needs its own ServiceMonitor there. Don't quote its GPU
+costs: it bills each time-sliced share as a whole GPU, even with GPU Feature
+Discovery's labels on the node. `scripts/gpu-chargeback.py` takes only its GPU hours
+and splits the nodes' price by shares held (docs/gpu-teams.md).
 
 **Scale-to-zero spans three layers.** The ScaledObject has three triggers:
 `gateway-demand` reads `litellm_deployment_total_requests_total{requested_model=~"local-mistral|rag-behavior-.*"}`

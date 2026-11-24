@@ -7,9 +7,9 @@
 #
 #   1. research runs 3 GPU steps: 2 on its spot shares, 1 borrowed from
 #      product's on-demand GPU
-#   2. product scales a vLLM stand-in to 2 replicas: Kueue evicts the
-#      borrowing step; Argo Workflows creates its pod again, which waits in
-#      the queue
+#   2. a minute later product scales a vLLM stand-in to 2 replicas: Kueue
+#      evicts the borrowing step, which Argo Workflows marks Error and
+#      retries as a new pod that waits in the queue
 #   3. product scales back to 0: the waiting step is admitted again
 #
 # Prints how long each admission took. The pods only sleep: this checks
@@ -125,7 +125,7 @@ metadata:
 spec:
   entrypoint: sweep
   serviceAccountName: argo-workflow
-  # Same queue label as k8s/training/finetune-workflow.yaml
+  # Same queue label and retry as k8s/training/finetune-workflow.yaml
   podMetadata:
     labels:
       kueue.x-k8s.io/queue-name: research
@@ -139,6 +139,9 @@ spec:
             template: gpu-step
             withItems: [a, b, c]
     - name: gpu-step
+      retryStrategy:
+        limit: "3"
+        retryPolicy: OnError
       tolerations:
         - {key: nvidia.com/gpu, operator: Equal, value: present, effect: NoSchedule}
       container:
@@ -152,6 +155,11 @@ wait_research_running 3 180 || true
 running=$(research_running)
 echo "$running of 3 research steps running after $(elapsed "$start")"
 show
+
+# Evict a step that has really been running. Argo recreates, under the same
+# name, a pod deleted while it still has the step as Pending; once Running, a
+# deleted pod is an error, and only a retry brings the step back.
+sleep 60
 
 echo
 echo "==> 2. product: vLLM stand-in scales to 2 replicas (its whole on-demand GPU)"
@@ -186,7 +194,7 @@ spec:
 EOF
 wait_for 180 "2" deployment vllm-standin -n llm-platform -o 'jsonpath={.status.readyReplicas}'
 echo "product's 2 replicas ready after $(elapsed "$start")"
-sleep 5 # let Argo notice the evicted pod and create it again
+sleep 20 # let Argo notice the evicted pod and retry the step
 show
 echo "--- research workflow steps"
 kubectl -n training get workflow research-sweep \

@@ -1,0 +1,33 @@
+# OpenCost: cost per namespace (chargeback, docs/gpu-teams.md). Wave 1: its
+# ServiceMonitor needs the Prometheus operator's CRDs (wave 0).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opencost
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opencost
+  sources:
+    - repoURL: https://opencost.github.io/opencost-helm-chart
+      chart: opencost
+      targetRevision: 2.5.34
+      helm:
+        releaseName: opencost
+        valueFiles:
+          - $values/k8s/observability/opencost-values.yaml
+    - repoURL: https://github.com/yack300/llm-platform-on-eks.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

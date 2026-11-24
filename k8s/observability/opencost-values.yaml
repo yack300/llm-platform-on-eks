@@ -1,0 +1,31 @@
+# OpenCost (opencost/opencost chart): what each namespace's share of the
+# nodes costs, read by scripts/gpu-chargeback.py (docs/gpu-teams.md). API
+# only: no UI or MCP server, nothing exposed outside the cluster.
+opencost:
+  exporter:
+    defaultClusterId: llm-platform-demo
+    # The default, 300, reads pods in 5-minute steps: GPU pods that live a
+    # few minutes lost most of their time, or all of it
+    prometheusDataSource:
+      queryResolutionSeconds: 60
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  prometheus:
+    internal:
+      serviceName: prometheus-kube-prometheus-prometheus
+      namespaceName: monitoring
+      port: 9090
+  # OpenCost reads its own metrics (node prices, GPU allocation) back from
+  # Prometheus: without this scrape every GPU cost is zero.
+  metrics:
+    serviceMonitor:
+      enabled: true
+  ui:
+    enabled: false
+  mcp:
+    enabled: false
