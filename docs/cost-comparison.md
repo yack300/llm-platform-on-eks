@@ -378,6 +378,31 @@ Training itself, 29 minutes of an on-demand g4dn.xlarge at $0.526/h, is
 about $0.25 of that; the rest is the platform around it. The adapter stays
 in the artifacts bucket for cents a month.
 
+## Ninth run (2026-11-23): serving adapters and the promotion gate
+
+A second adapter was trained (on spot this time), then vLLM served the base
+model and both adapters side by side while each answered the 66 evaluation
+questions; the judge graded them and the gate promoted the first adapter.
+Results in [fine-tuning.md](fine-tuning.md#ninth-eks-run-2026-11-23-two-candidates-one-promoted).
+
+What this run cost (Cost Explorer; ~2 h 10 min of cluster time, judging by
+the EKS control plane line, ~30 minutes of it waiting for a vLLM pod that
+KEDA kept at zero replicas):
+
+| Service | Cost |
+|---|---|
+| EC2 instances (platform spot nodes, GPU nodes) | $0.53 |
+| EC2 other (EBS volumes, data transfer) | $0.25 |
+| EKS control plane | $0.21 |
+| KMS (includes a key not created by this project) | $0.12 |
+| VPC (public IPv4 addresses) | $0.03 |
+| S3 (Terraform state, artifacts) | < $0.01 |
+| **Total before tax** | **$1.14** |
+
+Training a second adapter, serving three models and evaluating them cost
+about the same as the eighth run's single training; the judge's API calls
+are billed by Anthropic, not AWS, and aren't included.
+
 ## Total cost of all EKS runs
 
 What every EKS session cost, from Cost Explorer, before tax:
@@ -392,7 +417,8 @@ What every EKS session cost, from Cost Explorer, before tax:
 | Sixth | 2026-11-02 | Mistral-7B vs Qwen2.5-7B | $0.76 |
 | Seventh | 2026-11-08 | Tracing with Tempo | $0.65 |
 | Eighth | 2026-11-17 | Fine-tuning a LoRA adapter | $1.11 |
-| **All eight runs** | | | **$9.54** |
+| Ninth | 2026-11-23 | Serving adapters, promotion gate | $1.14 |
+| **All nine runs** | | | **$10.68** |
 
 ## What the whole session cost
 
