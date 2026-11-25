@@ -1,0 +1,37 @@
+{
+  "model": "local-mistral",
+  "max_tokens": 128,
+  "prompt": "Explain in a few paragraphs how Kubernetes schedules a pod onto a node.",
+  "levels": [
+    {
+      "concurrency": 1,
+      "requests": 6,
+      "errors": 0,
+      "served_by": [
+        "local-mistral"
+      ],
+      "output_tokens_per_s": 18.628772463649632,
+      "requests_per_s": 0.14553728487226275,
+      "avg_output_tokens": 128.0,
+      "ttft_p50_s": 0.3853041244983615,
+      "ttft_p95_s": 0.3936923340006615,
+      "latency_p50_s": 6.8710295835007855,
+      "latency_p95_s": 6.8920431660008035
+    },
+    {
+      "concurrency": 4,
+      "requests": 24,
+      "errors": 0,
+      "served_by": [
+        "local-mistral"
+      ],
+      "output_tokens_per_s": 68.36990084887776,
+      "requests_per_s": 0.5341398503818575,
+      "avg_output_tokens": 128.0,
+      "ttft_p50_s": 0.49467704199560103,
+      "ttft_p95_s": 0.5417285410003387,
+      "latency_p50_s": 7.458850728999096,
+      "latency_p95_s": 7.550381084001856
+    }
+  ]
+}

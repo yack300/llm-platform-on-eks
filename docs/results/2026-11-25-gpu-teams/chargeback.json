@@ -1,0 +1,200 @@
+{
+ "window": "2026-11-25T01:48:00Z,2026-11-25T02:15:47Z",
+ "allocations": [
+  {
+   "namespace": "argo",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "argo",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "argocd",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "argocd",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "keda",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "keda",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kube-system",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kube-system",
+   "node": "ip-172-31-74-126.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kube-system",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kube-system",
+   "node": "ip-172-31-81-92.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kueue-system",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kyverno",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "kyverno",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "llm-platform",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "llm-platform",
+   "node": "ip-172-31-74-126.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "llm-platform",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "llm-platform",
+   "node": "ip-172-31-81-92.ec2.internal",
+   "gpu_hours": 0.31667,
+   "gpu_cost": 0.13859
+  },
+  {
+   "namespace": "monitoring",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "monitoring",
+   "node": "ip-172-31-74-126.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "monitoring",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "monitoring",
+   "node": "ip-172-31-81-92.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "opencost",
+   "node": "ip-172-31-74-157.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "training",
+   "node": "ip-172-31-40-213.ec2.internal",
+   "gpu_hours": 0,
+   "gpu_cost": 0
+  },
+  {
+   "namespace": "training",
+   "node": "ip-172-31-81-92.ec2.internal",
+   "gpu_hours": 0.15,
+   "gpu_cost": 0.06565
+  }
+ ],
+ "nodes": {
+  "ip-172-31-81-92.ec2.internal": {
+   "hours": 0.42916666666666664,
+   "price": 0.526,
+   "shares": 2,
+   "capacity": "on-demand",
+   "counted_gpus": 1.0
+  }
+ },
+ "rows": [
+  {
+   "node": "ip-172-31-81-92.ec2.internal",
+   "capacity": "on-demand",
+   "team": "product",
+   "kind": "used",
+   "share_hours": 0.31667,
+   "opencost": 0.13859,
+   "owed": 0.08328421000000001
+  },
+  {
+   "node": "ip-172-31-81-92.ec2.internal",
+   "capacity": "on-demand",
+   "team": "research",
+   "kind": "used",
+   "share_hours": 0.15,
+   "opencost": 0.06565,
+   "owed": 0.03945
+  },
+  {
+   "node": "ip-172-31-81-92.ec2.internal",
+   "capacity": "on-demand",
+   "team": "product",
+   "kind": "idle",
+   "share_hours": 0.39166333333333325,
+   "opencost": 0.0,
+   "owed": 0.10300745666666665
+  }
+ ],
+ "totals": {
+  "product": {
+   "used": 0.08328421000000001,
+   "idle": 0.10300745666666665,
+   "opencost": 0.13859
+  },
+  "research": {
+   "used": 0.03945,
+   "idle": 0.0,
+   "opencost": 0.06565
+  }
+ },
+ "real": 0.22574166666666667
+}

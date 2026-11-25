@@ -171,6 +171,10 @@ Autoscaler to Karpenter, validated on EKS: spot with automatic on-demand
 fallback, image cache with a provisioned initialization rate (cold start
 ~5-6 min), GPU node removed ~12 min after the last request.
 
+Tenth run (2026-11-25): two teams sharing the GPUs with Kueue quotas on
+EKS, a T4 time-sliced between vLLM and a batch job (vLLM 2.5x slower), and
+its cost split between the teams ([docs/gpu-teams.md](docs/gpu-teams.md)).
+
 Known gaps:
 - Grafana's admin password now comes from a Secret created at bootstrap (the
   chart's generated one changed on every Argo CD sync); not yet checked on EKS.
@@ -187,5 +191,6 @@ Known gaps:
 - LiteLLM doesn't restart on a ConfigMap change (no config checksum on its
   Deployment); a failing ingestion Sync hook blocks newer revisions until the
   sync is terminated.
-- OpenCost is deployed by Argo CD but has only run on kind; it bills each
-  time-sliced GPU share as a whole GPU (docs/gpu-teams.md).
+- OpenCost bills each time-sliced GPU share as a whole GPU; GPU time-slicing
+  itself has no memory isolation, and a research job can keep vLLM from
+  starting (docs/gpu-teams.md).

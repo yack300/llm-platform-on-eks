@@ -37,13 +37,18 @@ configs:
       end
       return hs
 
-  # Karpenter's Helm chart is only published to an OCI registry, which Argo CD
-  # needs registered as an OCI-enabled Helm repository. Public, so no
+  # Karpenter's and Kueue's Helm charts come from OCI registries, which Argo
+  # CD needs registered as OCI-enabled Helm repositories. Public, so no
   # credentials.
   repositories:
     karpenter:
       name: karpenter
       url: public.ecr.aws/karpenter
+      type: helm
+      enableOCI: "true"
+    kueue:
+      name: kueue
+      url: registry.k8s.io/kueue/charts
       type: helm
       enableOCI: "true"
 

@@ -170,7 +170,7 @@ Checked on paper before paying for a cluster:
 Time-slicing is `settings.kubelet-device-plugins.nvidia` in the `gpu-shared`
 EC2NodeClass's `userData`; Karpenter 1.15.0 validates only
 `settings.kubernetes` and passes the rest of the TOML through (its
-`bottlerocketsettings.go`). Neither has run on EKS yet.
+`bottlerocketsettings.go`), as the EKS session confirmed.
 
 The new split on kind (2026-11-24, the same two scripts):
 
@@ -185,25 +185,81 @@ $0.2388 ($0.1096 product, $0.1292 research); OpenCost bills $0.2781. On the
 spot node, not sliced, OpenCost and the report agree: $0.0765 for the
 training.
 
-## Phase C: the EKS session, planned
+## Phase C: tenth EKS run (2026-11-25)
 
-About 2 hours of cluster and 1.5 of on-demand GPU: $2-4.
+45 minutes from Argo CD's install to the start of the teardown, with one
+on-demand g4dn.xlarge. Raw results: `docs/results/2026-11-25-gpu-teams/`.
 
-1. Cluster and Argo CD as always; `kueue`, `teams` and `opencost` Healthy.
-2. Wake vLLM. Check its node: `nvidia.com/gpu: 2` allocatable, the two
-   labels, one node only. How long Kueue's admission adds to the cold start.
-3. `scripts/gpu-interference.sh`: vLLM alone at 45%, then with a job in the
-   other share.
-4. `LOAD_GIB=12 ONLY_LOAD=1 scripts/gpu-interference.sh`: a job that doesn't
-   fit. Which of the two fails?
-5. Eviction: a pod in product's queue asking for the second share while the
-   job runs.
-6. A fine-tuning workflow on spot, if there's capacity (it'd also show what
-   a spot reclaim does), with vLLM serving.
-7. `scripts/gpu-chargeback.py --price on-demand=0.526 --price spot=<that
-   day's>` for the session; Cost Explorer two days later.
-8. `scripts/teardown-eks.sh`, with the queues emptied first.
+**Time-slicing works.** The node advertises `nvidia.com/gpu: 2`, with the
+two labels, and Karpenter launched only one. vLLM starts at 45% of the
+memory with room for 9,344 tokens of KV cache (2.3 requests of the maximum
+length at once). Kueue's admission adds nothing to the cold start: 2 s from
+the pod to Karpenter's NodeClaim. The whole cold start took 676 s, without
+the image cache: ~4 min 40 s of images and adapters and 5 min 31 s of vLLM's
+own startup.
 
-Not answered by the plan: how Kueue's 2 shares behave if the node is slow to
-come (a Workload is admitted against quota, not capacity), and who pays for
-the node's CPU and memory besides the GPU's holder.
+**Sharing the GPU makes vLLM 2.5 times slower**, with a job multiplying
+matrices without pause in the other share (`scripts/gpu-interference.sh`):
+
+| | vLLM alone | Sharing | |
+|---|---|---|---|
+| Output tokens/s, 1 request at a time | 46.9 | 18.6 | 2.5x slower |
+| Output tokens/s, 4 at a time | 170.9 | 68.4 | 2.5x slower |
+| Latency p50, 1 at a time | 2.73 s | 6.87 s | 2.5x |
+| Time to first token p50, 1 at a time | 0.32 s | 0.39 s | +22% |
+| The other job, matmul/s | 30 | 17.5 | -42% |
+
+One run, 6 and 24 requests of 128 tokens. The job is a worst case: it never
+waits. Half the time each would be 2x; the rest wasn't profiled.
+
+**Memory is first come, first served**, and that can take serving down:
+
+- A 12 GiB job next to a running vLLM fails at once (`CUDA out of memory`,
+  7.78 GiB free). vLLM kept answering.
+- A 10 GiB job that is there *first*, when vLLM restarts: vLLM can't start
+  (`Free memory on device (4.14/14.56 GiB) ... less than desired (0.45, 6.55
+  GiB)`), fails and is restarted until the job is gone. Serving was down for
+  7 minutes, 2 of them by the job and 5 of vLLM's startup. Kueue admitted
+  both, correctly: it counts shares. Product's right to take its share back
+  didn't help either, because it already had one.
+
+**Eviction:** product claiming the second share ran after 35 s. Kueue
+preempted the job at once; most of the rest is probably the evicted pod's
+30 s termination grace period (2-11 s on kind). A job that borrows should set a short one.
+
+**No spot capacity, as on most runs** (placement score 1 in every zone): the
+training workflow waited 9 minutes for a node that never came
+(`UnfulfillableCapacity`). Kueue had admitted it, since there was quota, so
+it also held research's whole quota while having no GPU.
+
+**Chargeback**, 25.7 minutes of the GPU node at $0.526/h:
+
+| | Used | Idle | Owed | OpenCost |
+|---|---|---|---|---|
+| product | $0.0833 | $0.1030 | $0.1863 | $0.1386 |
+| research | $0.0394 | | $0.0394 | $0.0657 |
+| GPU node | | | **$0.2257** | $0.2042 |
+
+OpenCost prices the node right ($0.526/h, from AWS) and counts 1 GPU thanks
+to the labels. It only counts *running* containers: vLLM held its share from
+its pod's creation but spent 5 minutes pulling images, 20% of the session,
+which is nobody's usage (here it falls to product as idle, who should pay it;
+a borrower's would fall to product too). A pod that lived 30 s doesn't show
+up at all. To be compared with Cost Explorer.
+
+**Found on the way:**
+
+- Argo CD needs Kueue's OCI registry declared in `argocd-values.yaml`, like
+  Karpenter's.
+- Kueue's aggregated API (`visibility`) listens on 8082, which the EKS
+  module's security group doesn't open from the control plane. Its
+  APIService failed, which kept the `kueue` app Progressing and wave 0
+  waiting; `terraform/main.tf` opens it now.
+- Emptying the queues before the teardown's cascade worked: nothing got
+  stuck.
+
+**What this says about sharing a T4 this way:** it's fine for a job that can
+be slow next to a service that can be slow. For a service with a latency
+target it isn't, whatever the quotas say, and a memory limit has to come
+from somewhere else. Not tried: MPS, which Bottlerocket also offers, and
+which can limit each client's memory.

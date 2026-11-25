@@ -134,6 +134,21 @@ module "eks" {
     "karpenter.sh/discovery" = var.cluster_name
   }
 
+  # Kueue's aggregated API (visibility) listens on 8082, which the module's
+  # recommended rules don't open from the control plane. Unreachable, its
+  # APIService keeps the kueue Application from ever being Healthy, and a
+  # broken APIService can block namespace deletion.
+  node_security_group_additional_rules = {
+    kueue_visibility = {
+      description                   = "Cluster API to the Kueue visibility server"
+      protocol                      = "tcp"
+      from_port                     = 8082
+      to_port                       = 8082
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+  }
+
   # Fixed-size base capacity: Argo CD, Karpenter itself (it can't run on the
   # nodes it manages), LiteLLM, Prometheus/Grafana, KEDA, Kyverno, Qdrant.
   # Anything that doesn't fit, and every GPU node, comes from Karpenter
